@@ -5,13 +5,13 @@ low-level driver to perform basic operations, and high-level GUI, written with P
 
 ## Installation
 
-Use the package manager pip to install pdf2doi.
+Use the package manager pip to install,
 
 ```bash
 pip install pyThorlabsPM100x
 ```
 
-This should automatically install all libraries needed by ```pyThorlabsPM100x```. If any error occurs during installation, try to first installing 
+This should automatically install all libraries needed by ```pyThorlabsPM100x```. If any error occurs during installation, try installing first
 the required dependencies separately (one by one), via
 ```bash
 pip install "PyQt5>=5.15.6
@@ -22,8 +22,8 @@ pip install numpy
 and then run again ```pip install pyThorlabsPM100x```
 
 **Important:** in order to be accessible from this script, the console needs to be set to "NI-VISA driver" modality, and not to
-"TLPM modality". Typically, the console will be automatically set to "TLPM modality" after installation of recent Thorlabs software.
-You can use the utility [Power Meter Driver Switcher](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=OPM) to switch the modality.
+"TLPM modality". Typically, using the console with recent Thorlabs software will automatically set it to "TLPM modality".
+You can use the utility [Power Meter Driver Switcher](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=OPM) to switch between modalities.
 
 ## Usage
 The installation should set up an entry point for the GUI. Just typing
