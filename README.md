@@ -14,8 +14,8 @@ pip install pyThorlabsPM100x
 This should automatically install all libraries needed by ```pyThorlabsPM100x```. If any error occurs during installation, try installing first
 the required dependencies separately (one by one), via
 ```bash
-pip install "PyQt5>=5.15.6
-pip install pyqtgraph>=0.12.4
+pip install "PyQt5>=5.15.6"
+pip install "pyqtgraph>=0.12.4"
 pip install pyvisa
 pip install numpy
 ```
