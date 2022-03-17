@@ -21,8 +21,8 @@ pip install numpy
 ```
 and then run again ```pip install pyThorlabsPM100x```
 
-**Important:** in order to be accessible from this script, the console needs to be set to "NI-VISA driver" modality, and not to
-"TLPM modality". Typically, using the console with recent Thorlabs software will automatically set it to "TLPM modality".
+**Important:** in order to be accessible from this library, the console needs to be set to "NI-VISA driver" modality, and not to
+"TLPM modality". Typically, if you used recent Thorlabs software to acquire from a console, that will automatically set the console to "TLPM modality".
 You can use the utility [Power Meter Driver Switcher](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=OPM) to switch between modalities.
 
 ## Usage as a stand-alone GUI interface
