@@ -25,9 +25,29 @@ and then run again ```pip install pyThorlabsPM100x```
 "TLPM modality". Typically, using the console with recent Thorlabs software will automatically set it to "TLPM modality".
 You can use the utility [Power Meter Driver Switcher](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=OPM) to switch between modalities.
 
-## Usage
+## Usage as a stand-alone GUI interface
 The installation should set up an entry point for the GUI. Just typing
 ```bash
 pyThorlabsPM100x
 ```
 in the command prompt to start the GUI.
+
+# Usage via the low-level driver
+
+`pyThorlabsPM100x` provides also a low-level driver, based on the library `pyvisa`, to directly interface with the powermeter console.
+
+```python
+from pyThorlabsPM100x.driver import ThorlabsPM100x
+powermeter = ThorlabsPM100x()
+available_devices = powermeter.list_devices()
+print(available_devices)
+powermeter.connect_device(device_addr = available_devices[0][0])
+print(powermeter.power)
+powermeter.disconnect_device()
+```
+The method `list_devices()` returns a list, with each element representing one available device in the format `[address,identiy,model]`. `address` is 
+the physical address of the device. The line `powermeter.connect_device(device_addr = available_devices[0][0])` establish a connection to the first device found.
+We then print the power currently read by the console, and finally disconnect from it.
+
+
+
