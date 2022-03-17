@@ -51,8 +51,8 @@ We then print the power currently read by the console, and finally disconnect fr
 
 **Properties**
 
-| Property | Type | Description | Can be set? | Notes |
-| --- | --- | --- |  --- | --- |
+| Property | Type | Description | <div style="width:200px"> Can be set?</div> | Notes |
+| --- | --- | --- |  ------- | - |
 | `power` | (float,str) | First element of list is the power currently read by the console, second element is the power units. | No |
 | `power_units` | str | Power units | No |
 | `wavelength` | int | Operating wavelength of the console. | Yes | Each powermerter head has a different range of acceptable wavelengths. The driver will **not** return an error when trying to set a wavelength outside of this range. |
