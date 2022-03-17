@@ -278,12 +278,12 @@ class interface(abstract_interface):
 
     def set_zero_powermeter(self):
         try: 
-            (Msg,ID) = self.instrument.set_zero()
+            ID = self.instrument.set_zero()
             self.logger.info(f"Zero-ing the device {self.connected_device_name}...")
             if ID == 1:
                 self.logger.info(f"Device was succesfully zeroed.")
             else:
-                self.logger.error(f"An error occurred while zero-ing this device: {Msg}")
+                self.logger.error(f"An error occurred while zero-ing this device.")
         except Exception as e:
             self.logger.error(f"An error occurred while zero-ing this device: {e}")
         return

@@ -9,8 +9,8 @@ with open("requirements.txt") as f:
     required_packages = f.read().splitlines()
 
 setuptools.setup(name='pyThorlabsPM100x',
-      version='0.14',
-      description='A python library/GUI to access and control the PM100A powermeter of Thorlabs.',
+      version='0.15',
+      description='A python library/GUI to access and control the PM100x consoles of Thorlabs.',
       long_description=long_description,
       long_description_content_type='text/markdown',
       url='https://github.com/MicheleCotrufo/',

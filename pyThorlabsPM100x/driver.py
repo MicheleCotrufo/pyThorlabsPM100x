@@ -224,16 +224,17 @@ class ThorlabsPM100x:
 
 
     def set_zero(self):
+        ID = 0
         if(self.connected):
             try:
-                self.BeingZeroed = 1
+                self.being_zeroed = 1
                 ID = self.instrument.write('sense:correction:collect:zero')
-                self.BeingZeroed = 0
+                self.being_zeroed = 0
                 ID = 1
             except visa.VisaIOError:
                 ID = 0
                 pass
-        return ('',ID)
+        return ID
 
     
     def move_to_next_power_range(self,direction,LastPowerRange = None):
