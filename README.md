@@ -49,6 +49,17 @@ The method `list_devices()` returns a list, with each element representing one a
 the physical address of the device. The line `powermeter.connect_device(device_addr = available_devices[0][0])` establishes a connection to the first device found.
 We then print the power currently read by the console, and finally disconnect from it.
 
+**Properties**
+
+| Property | Type | Description | Can be set? | Notes |
+| --- | --- | --- |  --- | --- |
+| `power` | (float,str) | First element of list is the power currently read by the console, second element is the power units. | No |
+| `power_units` | str | Power units | No |
+| `wavelength` | int | Operating wavelength of the console. | Yes | Each powermerter head has a different range of acceptable wavelengths. The driver will **not** return an error when trying to set a wavelength outside of this range. |
+| `power_range` | float | Current power range, defined as the maximum power measurable in the current range | Yes | When setting this property to a particular value X, the console will change the power range to the smallest power range which allows to measure the desired power X. |
+| `min_power_range` | float | Minimum power range available. | No | For the same console/head, this value might vary for different wavelengths. |
+| `max_power_range` | float | Maximum power range available. | No | For the same console/head, this value might vary for different wavelengths. |
+| `auto_power_range`| bool | Determines whether the consol is in auto power range or not. | Yes | |
 
 
 
