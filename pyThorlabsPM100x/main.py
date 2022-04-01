@@ -18,7 +18,6 @@ graphics_dir = os.path.join(os.path.dirname(__file__), 'graphics')
 class interface(abstract_interface):
     """
     Create a high-level interface with the device, and provide a GUI
-
     ...
 
     Attributes
@@ -100,14 +99,18 @@ class interface(abstract_interface):
     def __init__(self, **kwargs):
         self.output = {'Power':0} 
         self.continuous_read = False #When this is set to True, the data from device are acquired continuosly at the rate set by self.refresh_time
-        self.refresh_time = 0.2 #default refresh rate, in seconds
         self.stored_data = [] # List used to store data acquired by device
         self.current_power_string = " " # Last power read from powermeter, as a string
         self.connected_device_name = ''
 
+        ### These parameters might be overlapped by the config.json file
+        self.refresh_time = 0.2 #default refresh rate, in seconds
+        self.auto_power_range = True
+        ###
+
         self.instrument = ThorlabsPM100x() 
         super().__init__(**kwargs)
- 
+
     def create_gui(self,parent,plot=False): 
         '''
             parent, QWidget        
@@ -180,7 +183,6 @@ class interface(abstract_interface):
         self.read_wavelength()
         self.read_status_power_autorange()
         self.read_power_range()
-  
 
     def set_refresh_time(self, refresh_time):
         try: 
@@ -363,14 +365,12 @@ class gui(abstract_gui):
         hbox1 = Qt.QHBoxLayout()
         self.label_DeviceList = Qt.QLabel("Devices: ")
         self.combo_Devices = Qt.QComboBox()
-        #self.combo_Devices.resize(self.combo_Devices.sizeHint())
         self.button_RefreshDeviceList = Qt.QPushButton("")
         self.button_RefreshDeviceList.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'refresh.png')))
         self.button_RefreshDeviceList.clicked.connect(self.click_button_refresh_list_devices)
         hbox1.addWidget(self.label_DeviceList)
         hbox1.addWidget(self.combo_Devices,stretch=1)
         hbox1.addWidget(self.button_RefreshDeviceList)
-        #hbox1.addStretch(1)
 
         hbox2 = Qt.QHBoxLayout()
         self.button_ConnectDevice = Qt.QPushButton("Connect")
@@ -381,7 +381,6 @@ class gui(abstract_gui):
         self.edit_Wavelength = Qt.QLineEdit()
         self.edit_Wavelength.returnPressed.connect(self.press_enter_wavelength)
         self.edit_Wavelength.setAlignment(QtCore.Qt.AlignRight)
-        #self.edit_Wavelength.setMaximumWidth(50)
         self.label_WavelengthUnits = Qt.QLabel("nm")
         self.label_PowerRange = Qt.QLabel("Power range: ")
         self.button_DecreasePowerRange = Qt.QPushButton("<")
@@ -390,13 +389,13 @@ class gui(abstract_gui):
         self.button_DecreasePowerRange.clicked.connect(lambda x:self.click_button_change_power_range(-1))
         self.edit_PowerRange = Qt.QLineEdit()
         self.edit_PowerRange.setToolTip('Maximum power measurable in the current power range (unless \'Auto\' is checked).')
-        #self.edit_PowerRange.setMaximumWidth(60)
         self.edit_PowerRange.setReadOnly(True)
         self.button_IncreasePowerRange = Qt.QPushButton(">")
         self.button_IncreasePowerRange.setToolTip('Increase the powermeter power range.')
         self.button_IncreasePowerRange.setMaximumWidth(15)
         self.button_IncreasePowerRange.clicked.connect(lambda x:self.click_button_change_power_range(+1))
         self.box_PowerRangeAuto = Qt.QCheckBox("Auto")
+        self.box_PowerRangeAuto.setChecked(self.interface.auto_power_range)
         self.box_PowerRangeAuto.stateChanged.connect(self.click_box_PowerRangeAuto)
         self.box_PowerRangeAuto.setToolTip('Set the power range of the powermeter to Automatic.')
         hbox2.addWidget(self.button_ConnectDevice)
@@ -409,7 +408,6 @@ class gui(abstract_gui):
         hbox2.addWidget(self.edit_PowerRange)
         hbox2.addWidget(self.button_IncreasePowerRange)
         hbox2.addWidget(self.box_PowerRangeAuto)
-        #hbox2.addStretch(1)
 
         hbox3 = Qt.QHBoxLayout()
         self.button_StartPauseReading = Qt.QPushButton("")
@@ -427,7 +425,6 @@ class gui(abstract_gui):
         self.edit_RefreshTime.setToolTip('Specifies how often the power is read from the powermeter (Minimum value = 0.001 s).') 
         self.edit_RefreshTime.returnPressed.connect(self.press_enter_refresh_time)
         self.edit_RefreshTime.setAlignment(QtCore.Qt.AlignRight)
-        #self.edit_RefreshTime.setMaximumWidth(50)
 
         font = QtGui.QFont("Times", 12,QtGui.QFont.Bold)
         self.label_Power = Qt.QLabel("Power: ")
@@ -436,13 +433,10 @@ class gui(abstract_gui):
         self.edit_Power = Qt.QLineEdit()
         self.edit_Power.setFont(font)
         self.edit_Power.setText(self.interface.current_power_string)
-        #self.edit_Power.setMaximumWidth(150)
-        #self.edit_Power.resize(self.edit_Power.sizeHint());
         self.edit_Power.setAlignment(QtCore.Qt.AlignRight)
         self.edit_Power.setReadOnly(True)
         if plot:
             self.button_ShowHidePlot = Qt.QPushButton("Show/Hide Plot")
-            #self.button_StopReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'stop.png')))
             self.button_ShowHidePlot.setToolTip('Show/Hide Plot.') 
             self.button_ShowHidePlot.clicked.connect(self.click_button_ShowHidePlot)
 
@@ -455,7 +449,6 @@ class gui(abstract_gui):
         hbox3.addWidget(self.edit_Power)
         if plot:
             hbox3.addWidget(self.button_ShowHidePlot)
-        #hbox3.addStretch(1)
                 
         self.container = Qt.QVBoxLayout()
         self.container.addLayout(hbox1)  
@@ -475,6 +468,52 @@ class gui(abstract_gui):
                                                   self.button_RefreshDeviceList]
         if plot:
             self.create_plot()
+
+### GUI Events Functions
+
+    def click_button_refresh_list_devices(self):
+        self.interface.refresh_list_devices()
+
+    def click_button_connect_disconnect(self):
+        if(self.interface.instrument.connected == False): # We attempt connection   
+            device_full_name = self.combo_Devices.currentText() # Get the device name from the combobox
+            self.interface.connect_device(device_full_name)
+        elif(self.interface.instrument.connected == True): # We attempt disconnection
+            self.interface.disconnect_device()
+
+    def click_box_PowerRangeAuto(self, state):
+        if state == QtCore.Qt.Checked:
+            status_bool = True
+        else:
+            status_bool = False
+        self.interface.set_power_range_auto(status_bool)
+
+    def click_button_set_zero_powermeter(self):
+        self.interface.set_zero_powermeter()
+
+    def press_enter_wavelength(self):
+        return self.interface.set_wavelength(self.edit_Wavelength.text())
+        
+    def click_button_change_power_range(self,direction):
+        self.interface.change_power_range(direction)
+       
+    def click_button_StartPauseReading(self): 
+        if(self.interface.continuous_read == False):
+            self.interface.start_reading()
+        elif (self.interface.continuous_read == True):
+            self.interface.pause_reading()
+        return
+
+    def click_button_StopReading(self):
+        self.interface.stop_reading()
+
+    def press_enter_refresh_time(self):
+        return self.interface.set_refresh_time(self.edit_RefreshTime.text())
+
+    def click_button_ShowHidePlot(self):
+        self.plot_window.setHidden(not self.plot_window.isHidden())
+
+### END GUI Events Functions
     
     def initialize(self):
         super().initialize()
@@ -523,50 +562,6 @@ class gui(abstract_gui):
     def set_stopped_state(self):    
         self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'play.png')))
 
-### GUI Events Functions
-
-    def click_button_refresh_list_devices(self):
-        self.interface.refresh_list_devices()
-
-    def click_button_connect_disconnect(self):
-        if(self.interface.instrument.connected == False): # We attempt connection   
-            device_full_name = self.combo_Devices.currentText() # Get the device name from the combobox
-            self.interface.connect_device(device_full_name)
-        elif(self.interface.instrument.connected == True): # We attempt disconnection
-            self.interface.disconnect_device()
-
-    def click_box_PowerRangeAuto(self, state):
-        if state == QtCore.Qt.Checked:
-            status_bool = True
-        else:
-            status_bool = False
-        self.interface.set_power_range_auto(status_bool)
-
-    def click_button_set_zero_powermeter(self):
-        self.interface.set_zero_powermeter()
-
-    def press_enter_wavelength(self):
-        return self.interface.set_wavelength(self.edit_Wavelength.text())
-        
-    def click_button_change_power_range(self,direction):
-        self.interface.change_power_range(direction)
-       
-    def click_button_StartPauseReading(self): 
-        if(self.interface.continuous_read == False):
-            self.interface.start_reading()
-        elif (self.interface.continuous_read == True):
-            self.interface.pause_reading()
-        return
-
-    def click_button_StopReading(self):
-        self.interface.stop_reading()
-
-    def press_enter_refresh_time(self):
-        return self.interface.set_refresh_time(self.edit_RefreshTime.text())
-
-    def click_button_ShowHidePlot(self):
-        self.plot_window.setHidden(not self.plot_window.isHidden())
-  
 
 class MainWindow(Qt.QWidget):
     def __init__(self):
@@ -576,6 +571,8 @@ class MainWindow(Qt.QWidget):
     def closeEvent(self, event):
         if self.child:
             self.child.close()
+
+#################################################################################################
 
 def main():
     parser = argparse.ArgumentParser(description = "",epilog = "")
@@ -588,10 +585,10 @@ def main():
     Interface.verbose = not(args.decrease_verbose)
     app.aboutToQuit.connect(Interface.close) 
     Interface.create_gui(window,plot=True)
-    #Interface.set_trigger(lambda : print('test'),delay=1000)
-    
     window.show()
     app.exec()# Start the event loop.
 
 if __name__ == '__main__':
     main()
+
+#################################################################################################
