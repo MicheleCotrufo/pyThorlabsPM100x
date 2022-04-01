@@ -21,8 +21,8 @@ pip install numpy
 ```
 and then run again ```pip install pyThorlabsPM100x```
 
-**Important:** in order to be accessible from this script, the console needs to be set to "NI-VISA driver" modality, and not to
-"TLPM modality". Typically, using the console with recent Thorlabs software will automatically set it to "TLPM modality".
+**Important:** in order to be accessible from this library, the console needs to be set to "NI-VISA driver" modality, and not to
+"TLPM modality". Typically, if you used recent Thorlabs software to acquire from a console, that will automatically set the console to "TLPM modality".
 You can use the utility [Power Meter Driver Switcher](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=OPM) to switch between modalities.
 
 ## Usage as a stand-alone GUI interface
@@ -45,7 +45,7 @@ powermeter.connect_device(device_addr = available_devices[0][0])
 print(powermeter.power)
 powermeter.disconnect_device()
 ```
-The method `list_devices()` returns a list, with each element representing one available device in the format `[address,identiy,model]`. The string `address` contains 
+The method `list_devices()` returns a list, with each element representing one available device in the format `[address,identity,model]`. The string `address` contains 
 the physical address of the device. The line `powermeter.connect_device(device_addr = available_devices[0][0])` establishes a connection to the first device found.
 We then print the power currently read by the console, and finally disconnect from it.
 
@@ -67,7 +67,7 @@ The class `ThorlabsPM100x` supports several properties and methods to communicat
 **Methods**
 | Method | Returns | Description  |
 | --- | --- | --- | 
-| `list_devices()` | list |  Returns a list of all available devices. Each element of the list identifies a different device, and it is a three-element list in the form `[address,identiy,model]`. The string `address` contains the physical address of the device. The string `idn` contains the 'identity' of the device (that is, the answer of the device to the visa query '*IDN?'. The string `model` contains the device model (either 'PM100A' or 'PM100A').| 
+| `list_devices()` | list |  Returns a list of all available devices. Each element of the list identifies a different device, and it is a three-element list in the form `[address,identity,model]`. The string `address` contains the physical address of the device. The string `idn` contains the 'identity' of the device (which is the answer of the device to the visa query '*IDN?'. The string `model` contains the device model (either 'PM100A' or 'PM100D').| 
 | `connect_device(device_addr: str)` | (str,int) |  Attempt to connect to the device identified by the address in the string  `device_addr`. It returns a list of two elements. The first element is a string containing either the ID number of the connected device or an error message. The second element is an integer, equal to 1 if connection was succesful or to 0 otherwise. | 
 | `disconnect_device()` | (str,int)  | Attempt to disconnect the currently connected device. If no device is currently connected, it raises a `RuntimeError`. It returns a list of two elements. The first element is a string containing info on succesful disconnection or an error message. The second element is an integer, equal to 1 if disconnection was succesful or to 0 otherwise.  |
 | `read_min_max_wavelength()` | (float,float) |  Returns the minimum and maximum operating wavelengths for the connected device. If no device is currently connected, it raises a `RuntimeError`. | 
