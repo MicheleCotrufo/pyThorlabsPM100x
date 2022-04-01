@@ -1,9 +1,12 @@
-''' Abstract class containing methods for any interface of any instrument'''
+''' Abstract class containing general methods for any interface'''
+
 import PyQt5.QtCore as QtCore
 import logging
+import json
+import os
 
 class abstract_interface():
-    def __init__(self, app, mainwindow, name_logger=__package__):
+    def __init__(self, app, mainwindow, name_logger=__package__,config=None):
         # app           = The pyqt5 QApplication() object
         # mainwindow    = Main Window of the application
         # name_logger   = The name of the logger used for this particular istance of the interface object. If none is specified, the name of package is used as logger name
@@ -15,6 +18,19 @@ class abstract_interface():
         self._verbose = True #Keep track of whether this instance of the interface should produce logs or not
         self._name_logger = ''
         self.name_logger = name_logger #Setting this property will also create the logger,set defaulat output style, and store the logger object in self.logger
+
+        if not config: #If the dictionary config was not specified as input, we check if there is a config.json file in the package folder, and load that
+            #we load its keys-values as properties of this object
+            folder_package = os.path.dirname(os.path.abspath(__file__))
+            config_file = os.path.join(folder_package,'config.json')
+            with open(config_file) as jsonfile:
+                config = json.load(jsonfile)
+        if config:
+            self.load_parameters(config)
+
+    def load_parameters(self,dictionary):
+        for k, v in dictionary.items():
+            setattr(self, k, v)
     
     @property
     def verbose(self):
