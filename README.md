@@ -5,8 +5,8 @@ low-level driver to perform basic operations, and high-level GUI, written with P
 
 ## Table of Contents
  - [Installation](#installation)
- - [Usage as a stand-alone GUI interface](#usage-as-a-stand-alone GUI-interface)
- - [Usage as a stand-alone GUI interface](#usage-via-the-low-level-driver)
+ - [Usage as a stand-alone GUI interface](#usage-as-a-stand-alone-GUI-interface)
+ - [Usage via the low-level driver](#usage-via-the-low-level-driver)
 	* [Examples](#examples)
 
 ## Installation
