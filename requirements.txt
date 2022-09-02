@@ -1,3 +1,4 @@
+abstract_instrument_interface>=0.4
 PyQt5>=5.15.6
 pyqtgraph>=0.12.4
 pyvisa

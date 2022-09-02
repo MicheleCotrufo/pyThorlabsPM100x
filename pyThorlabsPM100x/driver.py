@@ -17,9 +17,9 @@ class ThorlabsPM100x:
                    raise RuntimeError("The specified model is not supported. Supported models are " + ", ".join(models_supported))
         self.rm = visa.ResourceManager()
         self.connected = False
-        self.model = None #the model of the device currently connected. 
+        self.model = None       #model of the device currently connected. 
         self.model_user = model #model specified by user. This variable is only used if the user specified a specific model
-        self.being_zeroed = 0 #This flag is set to 1 while the powermeter is being zeroed, in order to temporarly stop any power reading
+        self.being_zeroed = 0   #This flag is set to 1 while the powermeter is being zeroed, in order to temporarly stop any power reading
         self._wavelength = None
         self._auto_power_range = None # boolean variable, True if the powermeter has the auto power range ON, False otherwise
         self._power_range = None
@@ -41,9 +41,19 @@ class ThorlabsPM100x:
         Returns
         -------
         list_valid_devices, list
-            A list of all found valid devices. Each element of the list is a list of three strings, in the format [address,identiy,model]
+            A list of all found valid devices. Each element of the list is a list of three strings, in the format [address,identity,model]
 
         '''
+
+        #This makes sure that the Resource Manager of pyvisa (if it was already initialized) is closed and cleared before looking for available devices
+        #If a device was previously connected but was unplugged/turned off without doing a proper disconnection, it will not show up in the list  
+        #of available devices (or it will generate an error when querying with '*IDN?'), unless we first close and clear the rm object.
+        #However, when using this script together with other instruments which depend on pyvisa (e.g. in Ergastirio), this would interfere with other instrument. So for now is commented out
+        #if hasattr(self, 'rm'):                 
+        #    self.rm.close()                            
+        #    #self.rm.visalib._registry.clear()   
+
+        self.rm = visa.ResourceManager()
         self.list_all_devices = self.rm.list_resources()
         self.list_valid_devices = [] 
         for addr in self.list_all_devices:
@@ -102,8 +112,7 @@ class ThorlabsPM100x:
             except Exception as e:
                 ID = 0 
                 Msg = e
-            if(ID==1):
-                self.connected = False
+            self.connected = False
             return (Msg,ID)
         else:
             raise RuntimeError("Device is already disconnected.")
@@ -148,7 +157,7 @@ class ThorlabsPM100x:
         if wl<0:
             raise ValueError("Wavelength must be a positive number.")
         if wl<self.min_wavelength or wl>self.max_wavelength:
-            raise ValueError(f"Wavelength must between {self.min_wavelength} and {self.max_wavelength}.")
+            raise ValueError(f"Wavelength must be between {self.min_wavelength} and {self.max_wavelength}.")
         self.instrument.write('SENS:CORR:WAV ' + str(wl))
         self._wavelength = wl
         return self._wavelength

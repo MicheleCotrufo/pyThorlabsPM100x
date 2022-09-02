@@ -1,4 +1,4 @@
 {
-  "refresh_time": 0.1,
-  "auto_power_range":  0
+    "auto_power_range": false,
+    "refresh_time": 0.2
 }
