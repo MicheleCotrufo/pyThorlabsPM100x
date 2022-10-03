@@ -1,2 +1,2 @@
-abstract_instrument_interface>=0.4
+abstract_instrument_interface>=0.5
 pyvisa
