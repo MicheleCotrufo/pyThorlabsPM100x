@@ -169,7 +169,7 @@ class ThorlabsPM100x:
         self.min_wavelength = int(float(Msg))
         Msg = self.instrument.query('SENS:CORR:WAV? MAX')
         self.max_wavelength = int(float(Msg))
-        return self.max_wavelength, self.min_wavelength
+        return self.min_wavelength, self.max_wavelength
 
     @property
     def min_power_range(self):
