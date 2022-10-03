@@ -120,7 +120,6 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.list_devices = []          #list of devices found   
         self.continuous_read = False    # When this is set to True, the data from device are acquired continuosly at the rate set by self.refresh_time
         self.stored_data = []           # List used to store data acquired by device
-        self.current_power_string = " " # Last power read from powermeter, as a string
         self.connected_device_name = ''
         ###
         self.instrument = ThorlabsPM100x() 
@@ -344,8 +343,7 @@ class interface(abstract_instrument_interface.abstract_interface):
 
             super().update()    
 
-            self.current_power_string = f"{currentPower:.2e}" + ' ' +  power_units
-            self.sig_updated_data.emit(self.current_power_string)
+            self.sig_updated_data.emit([currentPower, power_units])
             QtCore.QTimer.singleShot(int(self.settings['refresh_time']*1e3), self.update)
            
         return
@@ -527,7 +525,8 @@ class gui(abstract_instrument_interface.abstract_gui):
 
     def on_data_change(self,data):
         #Data is (in this case) a string
-        self.edit_Power.setText(data)
+        current_power_string = f"{data[0]:.2e}" + ' ' +  data[1]
+        self.edit_Power.setText(current_power_string)
         if self.plot_object:
             self.plot_object.data.setData(list(range(1, len(self.interface.stored_data)+1)), self.interface.stored_data) #This line is executed even when self.continuous_read == False, to make sure that plot gets cleared when user press the stop button
         
@@ -651,10 +650,10 @@ def main():
     
     app = Qt.QApplication(sys.argv)
     window = MainWindow()
-    Interface = interface(app=app,mainwindow=window) #In this case window is both the MainWindow and the parent of the gui
+    Interface = interface(app=app,mainwindow=window) 
     Interface.verbose = not(args.decrease_verbose)
     app.aboutToQuit.connect(Interface.close) 
-    view = gui(interface = Interface, parent=window,plot=False)
+    view = gui(interface = Interface, parent=window,plot=False) #In this case window is both the MainWindow and the parent of the gui
     window.show()
     app.exec()# Start the event loop.
 
