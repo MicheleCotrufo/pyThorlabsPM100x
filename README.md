@@ -16,18 +16,15 @@ Use the package manager pip to install,
 ```bash
 pip install pyThorlabsPM100x
 ```
-
-This should automatically install all libraries needed by ```pyThorlabsPM100x```. If any error occurs during installation, try installing first
-the required dependencies separately (one by one), via
+This will install ```pyThorlabsPM100x``` together with all libraries required to run the low-level driver. In order to use the GUI, it is necessary to install additional libraries,
+specified in the ```requirements.txt``` files,
 ```bash
 pip install "PyQt5>=5.15.6"
 pip install "pyqtgraph>=0.12.4"
-pip install pyvisa
 pip install numpy
 ```
-and then run again ```pip install pyThorlabsPM100x```
 
-**Important:** in order to be accessible from this library, the console needs to be set to "NI-VISA driver" modality, and not to
+**Important:** in order to be accessible from this library, the console needs to be set to "PM100D NI-VISA" modality, and not to
 "TLPM modality". Typically, if you used recent Thorlabs software to acquire from a console, that will automatically set the console to "TLPM modality".
 You can use the utility [Power Meter Driver Switcher](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=OPM) to switch between modalities.
 
