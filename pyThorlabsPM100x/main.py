@@ -38,15 +38,11 @@ class interface(abstract_instrument_interface.abstract_interface):
     connected_device_name : str
         Name of the physical device currently connected to this interface 
     continuous_read : bool 
-        When this is set to True, the data from device are acquired continuosly at the rate set by refresh_time
-    refresh_time : float, 
-        
+        When this is set to True, the data from device are acquired continuosly at the rate set by refresh_time       
     stored_data : list
         List used to store data acquired by this interface
     power_units : str
         The power units of this device
-    current_power_string : str 
-        Last power read from powermeter, as a string
     settings = {
                 'refresh_time': float,      The time interval (in seconds) between consecutive reeading from the device driver (default = 0.2)
                 'auto_power_range': bool    Keep track of whether the device is in auto power range modality
@@ -101,7 +97,7 @@ class interface(abstract_instrument_interface.abstract_interface):
     #                                                       #   -----------------------------------------------------------------------------------------------------------------------         
     sig_list_devices_updated = QtCore.pyqtSignal(list)      #   | List of devices is updated                                | List of devices   
     sig_reading = QtCore.pyqtSignal(int)                    #   | Reading status changes                                    | 1 = Started Reading, 2 = Paused Reading, 3 Stopped Reading
-    sig_updated_data = QtCore.pyqtSignal(object)            #   | Sata is read from instrument                              | Acquired data 
+    sig_updated_data = QtCore.pyqtSignal(object)            #   | Data is read from instrument                              | Acquired data 
     sig_wavelength = QtCore.pyqtSignal(int)                 #   | Wavelength is changed                                     | Current Wavelength
     sig_min_max_wavelength = QtCore.pyqtSignal(int,int)     #   | Min and max wavelengths supported by this device are read | Current Min and max wavelengths
     sig_refreshtime = QtCore.pyqtSignal(float)              #   | Refresh time is changed                                   | Current Refresh time 
@@ -117,10 +113,10 @@ class interface(abstract_instrument_interface.abstract_interface):
                             'auto_power_range': True
                             }
         
-        self.list_devices = []          #list of devices found   
+        self.list_devices = []          #list of devices found 
+        self.connected_device_name = ''
         self.continuous_read = False    # When this is set to True, the data from device are acquired continuosly at the rate set by self.refresh_time
         self.stored_data = []           # List used to store data acquired by device
-        self.connected_device_name = ''
         ###
         self.instrument = ThorlabsPM100x() 
         ###
@@ -338,6 +334,7 @@ class interface(abstract_instrument_interface.abstract_interface):
         if(self.continuous_read == True):
             (currentPower,power_units) = self.instrument.power
             self.output['Power'] = currentPower
+            self.power_units = power_units
             self.stored_data.append(currentPower)
             #self.output['PowerUnits'] = power_units
 
@@ -387,8 +384,6 @@ class gui(abstract_instrument_interface.abstract_gui):
         self.interface.sig_close.connect(self.on_close)
 
         ### SET INITIAL STATE OF WIDGETS
-        self.edit_Power.setText(self.interface.current_power_string)
-        #self.box_PowerRangeAuto.setChecked(self.interface.settings['auto_power_range'])
         self.edit_RefreshTime.setText(f"{self.interface.settings['refresh_time']:.3f}")
         self.interface.refresh_list_devices()    #By calling this method, as soon as the gui is created we also look for devices
         self.on_connection_status_change(abstract_instrument_interface.SIG_DISCONNECTED) #When GUI is created, all widgets are set to the "Disconnected" state              
@@ -414,9 +409,11 @@ class gui(abstract_instrument_interface.abstract_gui):
         self.button_StopReading.setToolTip('Stop the reading from the powermeter. All previous data points are discarded.') 
         self.label_RefreshTime = Qt.QLabel("Refresh time (s): ")
         self.label_RefreshTime.setToolTip('Specifies how often the power is read from the powermeter (Minimum value = 0.001 s).') 
+        self.label_RefreshTime.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignCenter)
         self.edit_RefreshTime  = Qt.QLineEdit()
         self.edit_RefreshTime.setToolTip('Specifies how often the power is read from the powermeter (Minimum value = 0.001 s).') 
         self.edit_RefreshTime.setAlignment(QtCore.Qt.AlignRight)
+        self.edit_RefreshTime.setMaximumWidth(120)  
         font = QtGui.QFont("Times", 12,QtGui.QFont.Bold)
         self.label_Power = Qt.QLabel("Power: ")
         self.label_Power.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignCenter)
@@ -425,6 +422,7 @@ class gui(abstract_instrument_interface.abstract_gui):
         self.edit_Power.setFont(font)
         self.edit_Power.setAlignment(QtCore.Qt.AlignRight)
         self.edit_Power.setReadOnly(True)
+        #self.edit_Power.setMaximumWidth(150)    
         self.button_SetZeroPowermeter = Qt.QPushButton("Set Zero")  
         self.button_ShowHidePlot = Qt.QPushButton("Show/Hide Plot")
         self.button_ShowHidePlot.setToolTip('Show/Hide Plot.')
@@ -433,6 +431,7 @@ class gui(abstract_instrument_interface.abstract_gui):
         widgets_row2_stretches = [0]*len(widgets_row2)
         for w,s in zip(widgets_row2,widgets_row2_stretches):
             hbox2.addWidget(w,stretch=s)
+        hbox2.addStretch(1)
 
         if not self.plot_object:
             self.button_ShowHidePlot.hide()
@@ -440,19 +439,22 @@ class gui(abstract_instrument_interface.abstract_gui):
 
         hbox3 = Qt.QHBoxLayout()
         self.label_Wavelength = Qt.QLabel("Wavelength: ")
+        #self.label_Wavelength.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignCenter)
         self.edit_Wavelength = Qt.QLineEdit()
         self.edit_Wavelength.setAlignment(QtCore.Qt.AlignRight)
+        self.edit_Wavelength.setMaximumWidth(150) 
         self.label_WavelengthUnits = Qt.QLabel("nm")
         self.label_PowerRange = Qt.QLabel("Power range: ")
         self.button_DecreasePowerRange = Qt.QPushButton("<")
         self.button_DecreasePowerRange.setToolTip('Decrease the powermeter power range.')
-        self.button_DecreasePowerRange.setMaximumWidth(15)       
+        self.button_DecreasePowerRange.setMaximumWidth(25)       
         self.edit_PowerRange = Qt.QLineEdit()
         self.edit_PowerRange.setToolTip('Maximum power measurable in the current power range (unless \'Auto\' is checked).')
         self.edit_PowerRange.setReadOnly(True)
+        self.edit_PowerRange.setMaximumWidth(150) 
         self.button_IncreasePowerRange = Qt.QPushButton(">")
         self.button_IncreasePowerRange.setToolTip('Increase the powermeter power range.')
-        self.button_IncreasePowerRange.setMaximumWidth(15)
+        self.button_IncreasePowerRange.setMaximumWidth(25)
         self.box_PowerRangeAuto = Qt.QCheckBox("Auto")
         self.box_PowerRangeAuto.setToolTip('Set the power range of the powermeter to Automatic.')
         widgets_row3 = [self.label_Wavelength,self.edit_Wavelength,self.label_WavelengthUnits,self.label_PowerRange,
@@ -460,11 +462,17 @@ class gui(abstract_instrument_interface.abstract_gui):
         widgets_row3_stretches = [0]*len(widgets_row3)
         for w,s in zip(widgets_row3,widgets_row3_stretches):
             hbox3.addWidget(w,stretch=s)
+        hbox3.addStretch(1)
   
         self.container.addLayout(hbox1)  
         self.container.addLayout(hbox2)  
         self.container.addLayout(hbox3)  
         self.container.addStretch(1)
+
+        # Widgets for which we want to constraint the width by using sizeHint()
+        widget_list = [self.button_StopReading,self.label_RefreshTime,self.label_Power,self.button_SetZeroPowermeter,self.label_WavelengthUnits,self.label_PowerRange,self.box_PowerRangeAuto]
+        for w in widget_list:
+            w.setMaximumSize(w.sizeHint())
 
         self.widgets_enabled_when_connected = [self.button_SetZeroPowermeter,self.edit_Wavelength,self.edit_PowerRange,self.box_PowerRangeAuto, 
                                                self.button_IncreasePowerRange,self.button_DecreasePowerRange,self.button_StartPauseReading,self.button_StopReading]
