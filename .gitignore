@@ -3,7 +3,6 @@
 /.vscode/
 /build/
 /tests/
-/examples*
 # Compiled python modules.
 *.pyc
 

@@ -5,9 +5,11 @@ low-level driver to perform basic operations, and high-level GUI, written with P
 
 ## Table of Contents
  - [Installation](#installation)
- - [Usage as a stand-alone GUI interface](#usage-as-a-stand-alone-GUI-interface)
- - [Usage via the low-level driver](#usage-via-the-low-level-driver)
+  - [Usage via the low-level driver](#usage-via-the-low-level-driver)
 	* [Examples](#examples)
+ - [Usage as a stand-alone GUI interface](#usage-as-a-stand-alone-GUI-interface)
+ - [Embed the GUI within another GUI](#embed-the-gui-within-another-gui)
+
 
 ## Installation
 
@@ -27,13 +29,6 @@ pip install numpy
 **Important:** in order to be accessible from this library, the console needs to be set to "PM100D NI-VISA" modality, and not to
 "TLPM modality". Typically, if you used recent Thorlabs software to acquire from a console, that will automatically set the console to "TLPM modality".
 You can use the utility [Power Meter Driver Switcher](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=OPM) to switch between modalities.
-
-## Usage as a stand-alone GUI interface
-The installation should set up an entry point for the GUI. Just typing
-```bash
-pyThorlabsPM100x
-```
-in the command prompt will start the GUI.
 
 ## Usage via the low-level driver
 
@@ -94,3 +89,14 @@ powermeter.move_to_next_power_range(direction=+1) #increaase power range
 print(powermeter.power_range) #print new power range
 powermeter.disconnect_device() #disconnect the device
 ```
+
+## Usage as a stand-alone GUI interface
+The installation should set up an entry point for the GUI. Just typing
+```bash
+pyThorlabsPM100x
+```
+in the command prompt will start the GUI.
+
+## Embed the GUI within another GUI
+The GUI controller can also be easily integrated within a larger graphical interface, as shown in the example [here](https://github.com/MicheleCotrufo/pyThorlabsPM100x/blob/master/examples/embedding_in_gui.py).
+

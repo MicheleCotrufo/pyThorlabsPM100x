@@ -1,4 +1,4 @@
-from .main import interface
+from .main import interface, gui
 
 
 
