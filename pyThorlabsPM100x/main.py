@@ -14,12 +14,20 @@ import abstract_instrument_interface
 from pyThorlabsPM100x.driver import ThorlabsPM100x
 from pyThorlabsPM100x.plots import PlotObject
 
+# Identifier codes used for view-model communication. Other general-purpose codes are specified in abstract_instrument_interface
+SIG_READING_START = 1
+SIG_READING_PAUSE = 2
+SIG_READING_STOP = 3
+
 graphics_dir = os.path.join(os.path.dirname(__file__), 'graphics')
+
+##This application follows the model-view-controller paradigm, but with the view and controller defined inside the same object (the GUI)
+##The model is defined by the class 'interface', and the view+controller is defined by the class 'gui'. 
 
 class interface(abstract_instrument_interface.abstract_interface):
     """
-    Create a high-level interface with the device, and act as a connection between the low-level
-    interface (i.e. the driver) and the gui.
+    Create a high-level interface with the device, validates input data and perform high-level tasks such as periodically reading data from the instrument.
+    It uses signals (i.e. QtCore.pyqtSignal objects) to notify whenever relevant data has changes. These signals are typically received by the GUI
     Several general-purpose attributes and methods are defined in the class abstract_interface defined in abstract_instrument_interface
     ...
 
@@ -32,13 +40,17 @@ class interface(abstract_instrument_interface.abstract_interface):
     continuous_read : bool 
         When this is set to True, the data from device are acquired continuosly at the rate set by refresh_time
     refresh_time : float, 
-        The time interval (in seconds) between consecutive reeading from the device driver (default = 0.2)
+        
     stored_data : list
         List used to store data acquired by this interface
     power_units : str
         The power units of this device
     current_power_string : str 
         Last power read from powermeter, as a string
+    settings = {
+                'refresh_time': float,      The time interval (in seconds) between consecutive reeading from the device driver (default = 0.2)
+                'auto_power_range': bool    Keep track of whether the device is in auto power range modality
+                }
 
 
     Methods defined in this class (see the abstract class abstract_instrument_interface.abstract_interface for general methods)
@@ -51,18 +63,17 @@ class interface(abstract_instrument_interface.abstract_interface):
         Disconnect the currently connected device
     close()
         Closes this interface, close plot window (if any was open), and calls the close() method of the parent class, which typically calls the disconnect_device method
-    
-    set_disconnected_state()
-        
-    set_connecting_state()
-    
+   
     set_connected_state()
+        This method also calls the set_connected_state() method defined in abstract_instrument_interface.abstract_interface
     
     set_refresh_time(refresh_time)
     
     set_wavelength(wl)
     
     read_wavelength()
+
+    read_min_max_wavelength()
     
     change_power_range(direction)
     
@@ -79,10 +90,24 @@ class interface(abstract_instrument_interface.abstract_interface):
     stop_reading()
     
     update()
+        This method also calls the update() method defined in abstract_instrument_interface.abstract_interface
 
     """
 
     output = {'Power':0}  #We define this also as class variable, to make it possible to see which data is produced by this interface without having to create an object
+
+    ## SIGNALS THAT WILL BE USED TO COMMUNICATE WITH THE GUI
+    #                                                           | Triggered when ...                                        | Sends as parameter    
+    #                                                       #   -----------------------------------------------------------------------------------------------------------------------         
+    sig_list_devices_updated = QtCore.pyqtSignal(list)      #   | List of devices is updated                                | List of devices   
+    sig_reading = QtCore.pyqtSignal(int)                    #   | Reading status changes                                    | 1 = Started Reading, 2 = Paused Reading, 3 Stopped Reading
+    sig_updated_data = QtCore.pyqtSignal(object)            #   | Sata is read from instrument                              | Acquired data 
+    sig_wavelength = QtCore.pyqtSignal(int)                 #   | Wavelength is changed                                     | Current Wavelength
+    sig_min_max_wavelength = QtCore.pyqtSignal(int,int)     #   | Min and max wavelengths supported by this device are read | Current Min and max wavelengths
+    sig_refreshtime = QtCore.pyqtSignal(float)              #   | Refresh time is changed                                   | Current Refresh time 
+    sig_power_range = QtCore.pyqtSignal(float)              #   | Power range is changed                                    | Current Power range
+    sig_auto_power_range = QtCore.pyqtSignal(bool)          #   | Auto power range setting is changed                       | Current Status of auto power range (true/false)
+    ##
 
     def __init__(self, **kwargs):
         self.output = {'Power':0} 
@@ -94,7 +119,7 @@ class interface(abstract_instrument_interface.abstract_interface):
         
         self.list_devices = []          #list of devices found   
         self.continuous_read = False    # When this is set to True, the data from device are acquired continuosly at the rate set by self.refresh_time
-        self.stored_data = [] # List used to store data acquired by device
+        self.stored_data = []           # List used to store data acquired by device
         self.current_power_string = " " # Last power read from powermeter, as a string
         self.connected_device_name = ''
         ###
@@ -103,25 +128,20 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.gui_class = gui
         ###
         super().__init__(**kwargs)
-
-############################################################
-### Functions to interface the GUI and low-level driver
-############################################################
-
+        
     def refresh_list_devices(self):
         '''
         Get a list of all devices connected, by using the method list_devices() of the driver. For each device obtain its identity and its address.
-        For each device, create the string "identity -->  address" and add the string to the corresponding combobox in the GUI 
-        '''
-        self.gui.combo_Devices.clear()                      #First we empty the combobox       
-        self.list_devices = []
+        '''     
         self.logger.info(f"Looking for devices...") 
         list_valid_devices = self.instrument.list_devices() #Then we read the list of devices
         self.list_devices = list_valid_devices
         if(len(list_valid_devices)>0):
             list_IDNs_and_devices = [dev[1] + " --> " + dev[0] for dev in list_valid_devices] 
-            self.gui.combo_Devices.addItems(list_IDNs_and_devices)  
+        else:
+            list_IDNs_and_devices = []
         self.logger.info(f"Found {len(list_valid_devices)} devices.") 
+        self.sig_list_devices_updated.emit(list_IDNs_and_devices)
 
     def connect_device(self,device_full_name):
         if(device_full_name==''): 
@@ -136,7 +156,6 @@ class interface(abstract_instrument_interface.abstract_interface):
                 self.logger.info(f"Connected to device {device_name}.")
                 self.connected_device_name = device_name
                 self.set_connected_state()
-                self.start_reading()
             else: #If connection was not successful
                 self.logger.error(f"Error: {Msg}")
                 self.set_disconnected_state()
@@ -156,24 +175,17 @@ class interface(abstract_instrument_interface.abstract_interface):
             self.set_disconnected_state() #When disconnection is not succeful, it is typically because the device alredy lost connection
                                           #for some reason. In this case, it is still useful to have all widgets reset to disconnected state      
     def close(self,**kwargs):
-        if hasattr(self.gui,'plot_window'):
-            if self.gui.plot_window:
-                self.gui.plot_window.close()
         super().close(**kwargs)           
-    
-    def set_disconnected_state(self):
-        self.gui.set_disconnected_state()
-
-    def set_connecting_state(self):
-        self.gui.set_connecting_state()
 
     def set_connected_state(self):
+        super().set_connected_state()
         self.power_units = self.instrument.power_units
-        self.gui.set_connected_state()
+        self.read_min_max_wavelength()
         self.read_wavelength()
         #self.read_status_power_autorange()
         self.set_auto_power_range(self.settings['auto_power_range'])
-        self.read_power_range()
+        #self.read_power_range()
+        self.start_reading()
 
     def set_refresh_time(self, refresh_time):
         try: 
@@ -182,45 +194,51 @@ class interface(abstract_instrument_interface.abstract_interface):
                 return True
         except ValueError:
             self.logger.error(f"The refresh time must be a valid number.")
-            self.gui.edit_RefreshTime.setText(f"{self.settings['refresh_time']:.3f}")
+            self.sig_refreshtime.emit(self.settings['refresh_time'])
             return False
         if refresh_time < 0.001:
             self.logger.error(f"The refresh time must be positive and >= 1ms.")
-            self.gui.edit_RefreshTime.setText(f"{self.settings['refresh_time']:.3f}")
+            self.sig_refreshtime.emit(self.settings['refresh_time'])
             return False
         self.logger.info(f"The refresh time is now {refresh_time} s.")
         self.settings['refresh_time'] = refresh_time
-        self.gui.edit_RefreshTime.setText(f"{self.settings['refresh_time']:.3f}")
+        self.sig_refreshtime.emit(self.settings['refresh_time'])
         return True
 
     def set_wavelength(self, wl):
         try:
-            if int(self.instrument.wavelength) == int(wl): #in this case the number in the refresh time edit box is the same as the wavelength currently set
+            if int(self.instrument.wavelength) == int(float(wl)): #in this case the number in the refresh time edit box is the same as the wavelength currently set
                     return True
             self.logger.info(f"Setting the wavelength to {wl} for the device {self.connected_device_name}...")
-        except ValueError:
+        except ValueError as e:
             self.logger.error(f"The wavelength must be a valid number.")
-            self.gui.edit_Wavelength.setText(str(self.instrument.wavelength))
+            self.sig_wavelength.emit(self.instrument.wavelength)
             return False
         try: 
-            self.instrument.wavelength = wl
+            self.instrument.wavelength = int(float(wl))
             self.logger.info(f"Wavelength set correctly.")
         except Exception as e:
             self.logger.error(f"An error occurred while setting the wavelength: {e}")
-            self.gui.edit_Wavelength.setText(str(self.instrument.wavelength))
+            self.sig_wavelength.emit(self.instrument.wavelength)
             return False
         self.read_power_range() #The boundaries of the power ranges might change when the wavelength is changed, so we need to update it after changing the wavelength
         return True
-        
+  
     def read_wavelength(self):
         self.logger.info(f"Reading current wavelength from device {self.connected_device_name}...") 
-        self.wavelength = self.instrument.wavelength
+        self.wavelength = int(self.instrument.wavelength)
         if self.wavelength == None:
             self.logger.error(f"An error occurred while reading the wavelength from this device.")
             return
-        self.gui.edit_Wavelength.setText(str(int(self.wavelength)))
+        self.sig_wavelength.emit(self.instrument.wavelength)
         self.logger.info(f"Current wavelength is {self.wavelength}.") 
         return
+      
+    def read_min_max_wavelength(self):
+        self.logger.info(f"Reading min and max wavelength supported by device {self.connected_device_name}...") 
+        self.min_max_wls =  (self.instrument.min_wavelength,self.instrument.max_wavelength)
+        self.sig_min_max_wavelength.emit(self.min_max_wls[0],self.min_max_wls[1])
+        self.logger.info(f"Wavelength range: {self.min_max_wls[0]}-{self.min_max_wls[1]} nm") 
 
     def change_power_range(self,direction):
         if direction == +1:
@@ -238,23 +256,20 @@ class interface(abstract_instrument_interface.abstract_interface):
         if self.power_range == None:
             self.logger.error(f"An error occurred while reading the power range from this device.")
             return
-        self.gui.edit_PowerRange.setText(f"{self.power_range:.2e}")
-        self.gui.edit_PowerRange.setCursorPosition(1)
+        self.sig_power_range.emit(self.power_range)
         self.logger.info(f"Current power range is {self.power_range}.") 
 
-    def set_auto_power_range(self,status):
-        status = bool(status)
-        status_string = 'ON' if status else 'OFF'
+    def set_auto_power_range(self,auto_power_range):
+        auto_power_range = bool(auto_power_range)
+        status_string = 'ON' if auto_power_range else 'OFF'
         self.logger.info(f"Setting the auto-ranging function to {status_string} for the device {self.connected_device_name}...")    
         try:
-            self.instrument.auto_power_range  = status
-            self.gui.set_auto_power_range_state(status)
+            self.instrument.auto_power_range  = auto_power_range
+            self.sig_auto_power_range.emit(auto_power_range)
             self.logger.info(f"Setting changed succesfully.")
-            self.settings['auto_power_range'] = status
-            self.gui.box_PowerRangeAuto.setChecked(status)
+            self.settings['auto_power_range'] = auto_power_range
         except Exception as e:
             self.logger.error(f"An error occurred while setting the auto-ranging status: {e}")
-
         #self.read_auto_power_range()
         self.read_power_range()
 
@@ -263,8 +278,7 @@ class interface(abstract_instrument_interface.abstract_interface):
         try:
             auto_power_range = self.instrument.auto_power_range
             status_string = 'ON' if auto_power_range else 'OFF'
-            self.gui.box_PowerRangeAuto.setChecked(auto_power_range)
-            self.gui.set_auto_power_range_state(status)
+            self.sig_auto_power_range.emit(auto_power_range)
             self.logger.info(f"The auto-ranging function is currently set to {status_string}.")
             self.settings['auto_power_range'] = auto_power_range
             return auto_power_range
@@ -287,14 +301,8 @@ class interface(abstract_instrument_interface.abstract_interface):
         if(self.instrument.connected == False):
             self.logger.error(f"No device is connected.")
             return
-        #self.logger.info(f"Updating wavelength and refresh time before starting reading...")
-        if not(self.gui.press_enter_refresh_time()): #read the current value in the refresh_time textbox, and validates it. The function returns True/False if refresh_time was valid
-            return
-        if not(self.gui.press_enter_wavelength()): #read the current value in the refresh_time textbox, and validates it. The function returns True/False if refresh_time was valid
-            return
-        
-        self.gui.set_reading_state() # Change some widgets
-
+        #self.logger.info(f"Updating wavelength and refresh time before starting reading...")       
+        self.sig_reading.emit(SIG_READING_START) # This signal will be caught by the GUI
         self.continuous_read = True #Until this variable is set to True, the function UpdatePower will be repeated continuosly 
         self.logger.info(f"Starting reading from device {self.connected_device_name}...")
         # Call the function self.update(), which will do stome suff (read power and store it in a global variable) and then call itself continuosly until the variable self.continuous_read is set to False
@@ -305,7 +313,7 @@ class interface(abstract_instrument_interface.abstract_interface):
         #Sets self.continuous_read to False (this will force the function update() to stop calling itself)
         self.continuous_read = False
         self.logger.info(f"Paused reading from device {self.connected_device_name}.")
-        self.gui.set_pause_state() # Change some widgets
+        self.sig_reading.emit(SIG_READING_PAUSE) # This signal will be caught by the GUI
         return
 
     def stop_reading(self):
@@ -314,21 +322,20 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.stored_data = []
         self.update() #We call one more time the self.update() function to make sure plots is cleared. Since self.continuous_read is already set to False, update() will not acquire data anymore
         self.logger.info(f"Stopped reading from device {self.connected_device_name}. All stored data have been deleted.")
-        self.gui.set_stopped_state() # Change some widgets
+        self.sig_reading.emit(SIG_READING_PAUSE) # This signal will be caught by the GUI
         # ...
         return
         
     def update(self):
         '''
         This routine reads continuosly the power from the powermeter and stores its value
-        If we are continuosly acquiring the power (i.e. if self.ContinuousRead = 1) then:
-            1) Reads the power from the powermeter object and stores it in the self.output dictionary
-            2) Update the value of the variable self.current_power_string by generating a string containing the power and its units
-            3) Update the textbox in the GUI
+        If we are continuosly acquiring the power (i.e. if self.continuous_read = 1) then:
+            1) Reads the power from the powermeter and stores it in the self.output dictionary
+            2) Calls the update methods of the parent class abstract_instrument_interface.abstract_interface
+            3) Update the value of the variable self.current_power_string by generating a string containing the power and its units
+            3) Emits the self.sig_updated_data (which will be intercepted by the GUI)
             3) Call itself after a time given by self.refresh_time
         '''
-        if self.gui.plot_object:
-            self.gui.plot_object.data.setData(list(range(1, len(self.stored_data)+1)), self.stored_data) #This line is executed even when self.continuous_read == False, to make sure that plot gets cleared when user press the stop button
         if(self.continuous_read == True):
             (currentPower,power_units) = self.instrument.power
             self.output['Power'] = currentPower
@@ -338,14 +345,10 @@ class interface(abstract_instrument_interface.abstract_interface):
             super().update()    
 
             self.current_power_string = f"{currentPower:.2e}" + ' ' +  power_units
-            self.gui.edit_Power.setText(self.current_power_string)
+            self.sig_updated_data.emit(self.current_power_string)
             QtCore.QTimer.singleShot(int(self.settings['refresh_time']*1e3), self.update)
            
         return
-
-############################################################
-### END Functions to interface the GUI and low-level driver
-############################################################
     
     
 class gui(abstract_instrument_interface.abstract_gui):
@@ -358,73 +361,53 @@ class gui(abstract_instrument_interface.abstract_gui):
             If set true, the GUI also generates a plot object (and a button to show/hide the plot) to plot the content of the self.stored_data object
         """
         super().__init__(interface,parent)
-
-        self.widgets_enabled_when_connected = []     #The widgets in this list will only be enabled when the interface has succesfully connected to a device
-        self.widgets_enabled_when_disconnected = []  #The widgets in this list will only be enabled when the interface is not connected to a device
         self.plot_window = None # QWidget object of the widget (i.e. floating window) that will contain the plot
         self.plot_object = None # PlotObject object of the plot where self.store_powers is plotted
 
         if plot:        # Create a plot object
             self.create_plot() 
+        self.initialize()
 
     def initialize(self):
         self.create_widgets()
 
-        ### SET INITIAL STATE OF WIDGETS
-        self.edit_Power.setText(self.interface.current_power_string)
-        self.box_PowerRangeAuto.setChecked(self.interface.settings['auto_power_range'])
-        self.edit_RefreshTime.setText(f"{self.interface.settings['refresh_time']:.3f}")
-        self.interface.refresh_list_devices()    #By calling this method, as soon as the gui is created we also look for devices
-        self.set_disconnected_state()               #When GUI is created, all widgets are set to the "Disconnected" state
-        ###
-
         self.connect_widgets_events_to_functions()
 
-        ### Call the initialize method of the parent class
+        ### Call the initialize method of the super class. 
         super().initialize()
 
+        ### Connect signals from model to event slots of this GUI
+        self.interface.sig_list_devices_updated.connect(self.on_list_devices_updated)
+        self.interface.sig_connected.connect(self.on_connection_status_change) 
+        self.interface.sig_reading.connect(self.on_reading_status_change) 
+        self.interface.sig_updated_data.connect(self.on_data_change) 
+        self.interface.sig_refreshtime.connect(self.on_refreshtime_change)
+        self.interface.sig_wavelength.connect(self.on_wavelength_change)
+        self.interface.sig_min_max_wavelength.connect(self.on_min_max_wavelength_update)
+        self.interface.sig_auto_power_range.connect(self.on_auto_power_range_change)
+        self.interface.sig_power_range.connect(self.on_power_range_change)
+        self.interface.sig_close.connect(self.on_close)
+
+        ### SET INITIAL STATE OF WIDGETS
+        self.edit_Power.setText(self.interface.current_power_string)
+        #self.box_PowerRangeAuto.setChecked(self.interface.settings['auto_power_range'])
+        self.edit_RefreshTime.setText(f"{self.interface.settings['refresh_time']:.3f}")
+        self.interface.refresh_list_devices()    #By calling this method, as soon as the gui is created we also look for devices
+        self.on_connection_status_change(abstract_instrument_interface.SIG_DISCONNECTED) #When GUI is created, all widgets are set to the "Disconnected" state              
+        ###
+
     def create_widgets(self):
-        hbox1 = Qt.QHBoxLayout()
-        self.label_DeviceList = Qt.QLabel("Devices: ")
-        self.combo_Devices = Qt.QComboBox()
-        self.button_RefreshDeviceList = Qt.QPushButton("")
-        self.button_RefreshDeviceList.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'refresh.png')))     
-        hbox1.addWidget(self.label_DeviceList)
-        hbox1.addWidget(self.combo_Devices,stretch=1)
-        hbox1.addWidget(self.button_RefreshDeviceList)
+        """
+        Creates all widgets and layout for the GUI. Any Widget and Layout must assigned to self.containter, which is a pyqt Layout object
+        """ 
+        self.container = Qt.QVBoxLayout()
+
+        #Use the custom connection/listdevices panel, defined in abstract_instrument_interface.abstract_gui
+        hbox1, widgets_dict = self.create_panel_connection_listdevices()
+        for key, val in widgets_dict.items(): 
+            setattr(self,key,val) 
 
         hbox2 = Qt.QHBoxLayout()
-        self.button_ConnectDevice = Qt.QPushButton("Connect")
-        self.button_SetZeroPowermeter = Qt.QPushButton("Set Zero")    
-        self.label_Wavelength = Qt.QLabel("Wavelength: ")
-        self.edit_Wavelength = Qt.QLineEdit()
-        self.edit_Wavelength.setAlignment(QtCore.Qt.AlignRight)
-        self.label_WavelengthUnits = Qt.QLabel("nm")
-        self.label_PowerRange = Qt.QLabel("Power range: ")
-        self.button_DecreasePowerRange = Qt.QPushButton("<")
-        self.button_DecreasePowerRange.setToolTip('Decrease the powermeter power range.')
-        self.button_DecreasePowerRange.setMaximumWidth(15)       
-        self.edit_PowerRange = Qt.QLineEdit()
-        self.edit_PowerRange.setToolTip('Maximum power measurable in the current power range (unless \'Auto\' is checked).')
-        self.edit_PowerRange.setReadOnly(True)
-        self.button_IncreasePowerRange = Qt.QPushButton(">")
-        self.button_IncreasePowerRange.setToolTip('Increase the powermeter power range.')
-        self.button_IncreasePowerRange.setMaximumWidth(15)
-        self.box_PowerRangeAuto = Qt.QCheckBox("Auto")
-
-        self.box_PowerRangeAuto.setToolTip('Set the power range of the powermeter to Automatic.')
-        hbox2.addWidget(self.button_ConnectDevice)
-        hbox2.addWidget(self.button_SetZeroPowermeter)
-        hbox2.addWidget(self.label_Wavelength)
-        hbox2.addWidget(self.edit_Wavelength)
-        hbox2.addWidget(self.label_WavelengthUnits)
-        hbox2.addWidget(self.label_PowerRange)
-        hbox2.addWidget(self.button_DecreasePowerRange)
-        hbox2.addWidget(self.edit_PowerRange)
-        hbox2.addWidget(self.button_IncreasePowerRange)
-        hbox2.addWidget(self.box_PowerRangeAuto)
-
-        hbox3 = Qt.QHBoxLayout()
         self.button_StartPauseReading = Qt.QPushButton("")
         self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'play.png')))
         self.button_StartPauseReading.setToolTip('Start or pause the reading from the powermeter. The previous data points are not discarded when pausing.') 
@@ -444,37 +427,50 @@ class gui(abstract_instrument_interface.abstract_gui):
         self.edit_Power.setFont(font)
         self.edit_Power.setAlignment(QtCore.Qt.AlignRight)
         self.edit_Power.setReadOnly(True)
-        hbox3.addWidget(self.button_StartPauseReading)
+        self.button_SetZeroPowermeter = Qt.QPushButton("Set Zero")  
+        self.button_ShowHidePlot = Qt.QPushButton("Show/Hide Plot")
+        self.button_ShowHidePlot.setToolTip('Show/Hide Plot.')
 
-        if self.plot_object:
-            self.button_ShowHidePlot = Qt.QPushButton("Show/Hide Plot")
-            self.button_ShowHidePlot.setToolTip('Show/Hide Plot.')
-            hbox3.addWidget(self.button_StopReading)
+        widgets_row2 = [self.button_StartPauseReading,self.button_StopReading,self.label_RefreshTime,self.edit_RefreshTime,self.label_Power,self.edit_Power,self.button_SetZeroPowermeter,self.button_ShowHidePlot]
+        widgets_row2_stretches = [0]*len(widgets_row2)
+        for w,s in zip(widgets_row2,widgets_row2_stretches):
+            hbox2.addWidget(w,stretch=s)
 
-        hbox3.addWidget(self.label_RefreshTime)
-        hbox3.addWidget(self.edit_RefreshTime)
-        hbox3.addWidget(self.label_Power)
-        hbox3.addWidget(self.edit_Power)
+        if not self.plot_object:
+            self.button_ShowHidePlot.hide()
+            self.button_StopReading.hide()
 
-        if self.plot_object:
-            hbox3.addWidget(self.button_ShowHidePlot)
-                
-        self.container = Qt.QVBoxLayout()
+        hbox3 = Qt.QHBoxLayout()
+        self.label_Wavelength = Qt.QLabel("Wavelength: ")
+        self.edit_Wavelength = Qt.QLineEdit()
+        self.edit_Wavelength.setAlignment(QtCore.Qt.AlignRight)
+        self.label_WavelengthUnits = Qt.QLabel("nm")
+        self.label_PowerRange = Qt.QLabel("Power range: ")
+        self.button_DecreasePowerRange = Qt.QPushButton("<")
+        self.button_DecreasePowerRange.setToolTip('Decrease the powermeter power range.')
+        self.button_DecreasePowerRange.setMaximumWidth(15)       
+        self.edit_PowerRange = Qt.QLineEdit()
+        self.edit_PowerRange.setToolTip('Maximum power measurable in the current power range (unless \'Auto\' is checked).')
+        self.edit_PowerRange.setReadOnly(True)
+        self.button_IncreasePowerRange = Qt.QPushButton(">")
+        self.button_IncreasePowerRange.setToolTip('Increase the powermeter power range.')
+        self.button_IncreasePowerRange.setMaximumWidth(15)
+        self.box_PowerRangeAuto = Qt.QCheckBox("Auto")
+        self.box_PowerRangeAuto.setToolTip('Set the power range of the powermeter to Automatic.')
+        widgets_row3 = [self.label_Wavelength,self.edit_Wavelength,self.label_WavelengthUnits,self.label_PowerRange,
+                        self.button_DecreasePowerRange,self.edit_PowerRange,self.button_IncreasePowerRange,self.box_PowerRangeAuto]
+        widgets_row3_stretches = [0]*len(widgets_row3)
+        for w,s in zip(widgets_row3,widgets_row3_stretches):
+            hbox3.addWidget(w,stretch=s)
+  
         self.container.addLayout(hbox1)  
         self.container.addLayout(hbox2)  
         self.container.addLayout(hbox3)  
         self.container.addStretch(1)
 
-        self.widgets_enabled_when_connected = [self.button_SetZeroPowermeter, 
-                                               self.edit_Wavelength, 
-                                               self.edit_PowerRange, 
-                                               self.box_PowerRangeAuto, 
-                                               self.button_IncreasePowerRange, 
-                                               self.button_DecreasePowerRange,
-                                               self.button_StartPauseReading,
-                                               self.button_StopReading]
-        self.widgets_enabled_when_disconnected = [self.combo_Devices , 
-                                                  self.button_RefreshDeviceList]
+        self.widgets_enabled_when_connected = [self.button_SetZeroPowermeter,self.edit_Wavelength,self.edit_PowerRange,self.box_PowerRangeAuto, 
+                                               self.button_IncreasePowerRange,self.button_DecreasePowerRange,self.button_StartPauseReading,self.button_StopReading]
+        self.widgets_enabled_when_disconnected = [self.combo_Devices,self.button_RefreshDeviceList]
 
     def connect_widgets_events_to_functions(self):
         self.button_RefreshDeviceList.clicked.connect(self.click_button_refresh_list_devices)
@@ -491,43 +487,85 @@ class gui(abstract_instrument_interface.abstract_gui):
         if self.plot_object:
             self.button_ShowHidePlot.clicked.connect(self.click_button_ShowHidePlot)
 
-    def set_disconnected_state(self):
-        self.disable_widget(self.widgets_enabled_when_connected)
-        self.enable_widget(self.widgets_enabled_when_disconnected)
-        self.edit_PowerRange.setText('')
-        self.edit_Wavelength.setText('')
-        self.button_ConnectDevice.setText("Connect")
-        self.edit_Power.setText('')
+############################################################
+### Event Slots. They are normally triggered by signals from the model, and change the GUI accordingly
+############################################################
 
-    def set_connecting_state(self):
-        self.disable_widget(self.widgets_enabled_when_connected)
-        self.enable_widget(self.widgets_enabled_when_disconnected)
-        self.button_ConnectDevice.setText("Connecting...")
+    def on_connection_status_change(self,status):
+        if status == abstract_instrument_interface.SIG_DISCONNECTED:
+            self.disable_widget(self.widgets_enabled_when_connected)
+            self.enable_widget(self.widgets_enabled_when_disconnected)
+            self.edit_PowerRange.setText('')
+            self.edit_Wavelength.setText('')
+            self.label_Wavelength.setText(f"Wavelength: ")
+            self.button_ConnectDevice.setText("Connect")
+            self.edit_Power.setText('')
+        if status == abstract_instrument_interface.SIG_CONNECTING:
+            self.disable_widget(self.widgets_enabled_when_connected)
+            self.enable_widget(self.widgets_enabled_when_disconnected)
+            self.button_ConnectDevice.setText("Connecting...")
+        if status == abstract_instrument_interface.SIG_CONNECTED:
+            self.enable_widget(self.widgets_enabled_when_connected)
+            self.disable_widget(self.widgets_enabled_when_disconnected)
+            self.button_ConnectDevice.setText("Disconnect")
+            #If a self.plot_object was created, update window title with powermeter name and vertical axis of plot with current Power units
+            if self.plot_object: 
+                self.plot_object.graphWidget.setLabel("left", f"Power [{self.interface.instrument._power_units}]")
+                self.plot_window.setWindowTitle(f"Powermeter: {self.interface.connected_device_name}")
 
-    def set_connected_state(self):
-        self.enable_widget(self.widgets_enabled_when_connected)
-        self.disable_widget(self.widgets_enabled_when_disconnected)
-        self.button_ConnectDevice.setText("Disconnect")
-        #If a self.plot_object was created, update window title with powermeter name and vertical axis of plot with current Power units
-        if self.plot_object: 
-            self.plot_object.graphWidget.setLabel("left", f"Power [{self.interface.instrument._power_units}]")
-            self.plot_window.setWindowTitle(f"Powermeter: {self.interface.connected_device_name}")
+    def on_reading_status_change(self,status):
+        if status == SIG_READING_PAUSE:
+            self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'play.png')))
+        if status == SIG_READING_START:
+            self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'pause.png')))
+        if status == SIG_READING_STOP: 
+            self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'play.png')))
 
-    def set_pause_state(self):
-        self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'play.png')))
-    def set_reading_state(self):
-        self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'pause.png')))
-    def set_stopped_state(self):    
-        self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'play.png')))
+    def on_list_devices_updated(self,list_devices):
+        self.combo_Devices.clear()  #First we empty the combobox  
+        self.combo_Devices.addItems(list_devices) 
+
+    def on_data_change(self,data):
+        #Data is (in this case) a string
+        self.edit_Power.setText(data)
+        if self.plot_object:
+            self.plot_object.data.setData(list(range(1, len(self.interface.stored_data)+1)), self.interface.stored_data) #This line is executed even when self.continuous_read == False, to make sure that plot gets cleared when user press the stop button
+        
+    def on_refreshtime_change(self,value):
+        self.edit_RefreshTime.setText(f"{value:.3f}")
+
+    def on_wavelength_change(self,value):
+        self.edit_Wavelength.setText(str(int(value)))
+
+    def on_min_max_wavelength_update(self,min,max):
+        self.label_Wavelength.setText(f"Wavelength<br>(<b>{min}-{max}</b>): ")
+    
+    def on_power_range_change(self,value):
+        self.edit_PowerRange.setText(f"{value:.2e}")
+        self.edit_PowerRange.setCursorPosition(1)
+
+    def on_auto_power_range_change(self,value):
+        self.set_auto_power_range_state(value)
+        self.box_PowerRangeAuto.setChecked(value)
+
+    def on_close(self):
+        if hasattr(self,'plot_window'):
+            if self.plot_window:
+                self.plot_window.close()
 
     def set_auto_power_range_state(self,auto_power_range):
         if auto_power_range:
             self.disable_widget([self.edit_PowerRange,self.button_IncreasePowerRange, self.button_DecreasePowerRange])
         else:
             self.enable_widget([self.edit_PowerRange,self.button_IncreasePowerRange, self.button_DecreasePowerRange])
+
+############################################################
+### END Event Slots
+############################################################
+
             
 ############################################################
-### GUI Events Functions
+### GUI Events Functions. They are triggered by direct interaction with the GUI, and they call methods of the interface (i.e. the model) object.
 ############################################################
 
     def click_button_refresh_list_devices(self):
@@ -558,6 +596,10 @@ class gui(abstract_instrument_interface.abstract_gui):
        
     def click_button_StartPauseReading(self): 
         if(self.interface.continuous_read == False):
+            if not(self.press_enter_refresh_time()): #read the current value in the refresh_time textbox, and validates it. The function returns True/False if refresh_time was valid
+                return
+            if not(self.press_enter_wavelength()): #read the current value in the wavelength textbox, and validates it. The function returns True/False if refresh_time was valid
+                return
             self.interface.start_reading()
         elif (self.interface.continuous_read == True):
             self.interface.pause_reading()
@@ -589,7 +631,7 @@ class gui(abstract_instrument_interface.abstract_gui):
         self.plot_window.show()
         self.plot_window.setHidden(True)
             
-
+#################################################################################################
 
 class MainWindow(Qt.QWidget):
     def __init__(self):
@@ -612,7 +654,7 @@ def main():
     Interface = interface(app=app,mainwindow=window) #In this case window is both the MainWindow and the parent of the gui
     Interface.verbose = not(args.decrease_verbose)
     app.aboutToQuit.connect(Interface.close) 
-    Interface.create_gui(window,plot=True)
+    view = gui(interface = Interface, parent=window,plot=False)
     window.show()
     app.exec()# Start the event loop.
 
