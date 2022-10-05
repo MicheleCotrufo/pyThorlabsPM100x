@@ -14,11 +14,6 @@ import abstract_instrument_interface
 from pyThorlabsPM100x.driver import ThorlabsPM100x
 from pyThorlabsPM100x.plots import PlotObject
 
-# Identifier codes used for view-model communication. Other general-purpose codes are specified in abstract_instrument_interface
-SIG_READING_START = 1
-SIG_READING_PAUSE = 2
-SIG_READING_STOP = 3
-
 graphics_dir = os.path.join(os.path.dirname(__file__), 'graphics')
 
 ##This application follows the model-view-controller paradigm, but with the view and controller defined inside the same object (the GUI)
@@ -104,10 +99,13 @@ class interface(abstract_instrument_interface.abstract_interface):
     sig_power_range = QtCore.pyqtSignal(float)              #   | Power range is changed                                    | Current Power range
     sig_auto_power_range = QtCore.pyqtSignal(bool)          #   | Auto power range setting is changed                       | Current Status of auto power range (true/false)
     ##
+    # Identifier codes used for view-model communication. Other general-purpose codes are specified in abstract_instrument_interface
+    SIG_READING_START = 1
+    SIG_READING_PAUSE = 2
+    SIG_READING_STOP = 3
 
     def __init__(self, **kwargs):
         self.output = {'Power':0} 
-        
         ### Default values of settings (might be overwritten by settings saved in .json files later)
         self.settings = {   'refresh_time': 0.2,
                             'auto_power_range': True
@@ -119,8 +117,6 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.stored_data = []           # List used to store data acquired by device
         ###
         self.instrument = ThorlabsPM100x() 
-        ###
-        self.gui_class = gui
         ###
         super().__init__(**kwargs)
         
@@ -297,7 +293,7 @@ class interface(abstract_instrument_interface.abstract_interface):
             self.logger.error(f"No device is connected.")
             return
         #self.logger.info(f"Updating wavelength and refresh time before starting reading...")       
-        self.sig_reading.emit(SIG_READING_START) # This signal will be caught by the GUI
+        self.sig_reading.emit(self.SIG_READING_START) # This signal will be caught by the GUI
         self.continuous_read = True #Until this variable is set to True, the function UpdatePower will be repeated continuosly 
         self.logger.info(f"Starting reading from device {self.connected_device_name}...")
         # Call the function self.update(), which will do stome suff (read power and store it in a global variable) and then call itself continuosly until the variable self.continuous_read is set to False
@@ -308,7 +304,7 @@ class interface(abstract_instrument_interface.abstract_interface):
         #Sets self.continuous_read to False (this will force the function update() to stop calling itself)
         self.continuous_read = False
         self.logger.info(f"Paused reading from device {self.connected_device_name}.")
-        self.sig_reading.emit(SIG_READING_PAUSE) # This signal will be caught by the GUI
+        self.sig_reading.emit(self.SIG_READING_PAUSE) # This signal will be caught by the GUI
         return
 
     def stop_reading(self):
@@ -317,7 +313,7 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.stored_data = []
         self.update() #We call one more time the self.update() function to make sure plots is cleared. Since self.continuous_read is already set to False, update() will not acquire data anymore
         self.logger.info(f"Stopped reading from device {self.connected_device_name}. All stored data have been deleted.")
-        self.sig_reading.emit(SIG_READING_PAUSE) # This signal will be caught by the GUI
+        self.sig_reading.emit(self.SIG_READING_PAUSE) # This signal will be caught by the GUI
         # ...
         return
         
@@ -365,7 +361,6 @@ class gui(abstract_instrument_interface.abstract_gui):
 
     def initialize(self):
         self.create_widgets()
-
         self.connect_widgets_events_to_functions()
 
         ### Call the initialize method of the super class. 
@@ -386,7 +381,7 @@ class gui(abstract_instrument_interface.abstract_gui):
         ### SET INITIAL STATE OF WIDGETS
         self.edit_RefreshTime.setText(f"{self.interface.settings['refresh_time']:.3f}")
         self.interface.refresh_list_devices()    #By calling this method, as soon as the gui is created we also look for devices
-        self.on_connection_status_change(abstract_instrument_interface.SIG_DISCONNECTED) #When GUI is created, all widgets are set to the "Disconnected" state              
+        self.on_connection_status_change(self.interface.SIG_DISCONNECTED) #When GUI is created, all widgets are set to the "Disconnected" state              
         ###
 
     def create_widgets(self):
@@ -464,9 +459,8 @@ class gui(abstract_instrument_interface.abstract_gui):
             hbox3.addWidget(w,stretch=s)
         hbox3.addStretch(1)
   
-        self.container.addLayout(hbox1)  
-        self.container.addLayout(hbox2)  
-        self.container.addLayout(hbox3)  
+        for box in [hbox1,hbox2,hbox3]:
+            self.container.addLayout(box)  
         self.container.addStretch(1)
 
         # Widgets for which we want to constraint the width by using sizeHint()
@@ -493,12 +487,12 @@ class gui(abstract_instrument_interface.abstract_gui):
         if self.plot_object:
             self.button_ShowHidePlot.clicked.connect(self.click_button_ShowHidePlot)
 
-############################################################
-### Event Slots. They are normally triggered by signals from the model, and change the GUI accordingly
-############################################################
+###########################################################################################################
+### Event Slots. They are normally triggered by signals from the model, and change the GUI accordingly  ###
+###########################################################################################################
 
     def on_connection_status_change(self,status):
-        if status == abstract_instrument_interface.SIG_DISCONNECTED:
+        if status == self.interface.SIG_DISCONNECTED:
             self.disable_widget(self.widgets_enabled_when_connected)
             self.enable_widget(self.widgets_enabled_when_disconnected)
             self.edit_PowerRange.setText('')
@@ -506,11 +500,15 @@ class gui(abstract_instrument_interface.abstract_gui):
             self.label_Wavelength.setText(f"Wavelength: ")
             self.button_ConnectDevice.setText("Connect")
             self.edit_Power.setText('')
-        if status == abstract_instrument_interface.SIG_CONNECTING:
+        if status == self.interface.SIG_DISCONNECTING:
+            self.disable_widget(self.widgets_enabled_when_connected)
+            self.enable_widget(self.widgets_enabled_when_disconnected)
+            self.button_ConnectDevice.setText("Disconnecting...")
+        if status == self.interface.SIG_CONNECTING:
             self.disable_widget(self.widgets_enabled_when_connected)
             self.enable_widget(self.widgets_enabled_when_disconnected)
             self.button_ConnectDevice.setText("Connecting...")
-        if status == abstract_instrument_interface.SIG_CONNECTED:
+        if status == self.interface.SIG_CONNECTED:
             self.enable_widget(self.widgets_enabled_when_connected)
             self.disable_widget(self.widgets_enabled_when_disconnected)
             self.button_ConnectDevice.setText("Disconnect")
@@ -520,11 +518,11 @@ class gui(abstract_instrument_interface.abstract_gui):
                 self.plot_window.setWindowTitle(f"Powermeter: {self.interface.connected_device_name}")
 
     def on_reading_status_change(self,status):
-        if status == SIG_READING_PAUSE:
+        if status == self.interface.SIG_READING_PAUSE:
             self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'play.png')))
-        if status == SIG_READING_START:
+        if status == self.interface.SIG_READING_START:
             self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'pause.png')))
-        if status == SIG_READING_STOP: 
+        if status == self.interface.SIG_READING_STOP: 
             self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'play.png')))
 
     def on_list_devices_updated(self,list_devices):
@@ -566,14 +564,14 @@ class gui(abstract_instrument_interface.abstract_gui):
         else:
             self.enable_widget([self.edit_PowerRange,self.button_IncreasePowerRange, self.button_DecreasePowerRange])
 
-############################################################
-### END Event Slots
-############################################################
+#######################
+### END Event Slots ###
+#######################
 
             
-############################################################
-### GUI Events Functions. They are triggered by direct interaction with the GUI, and they call methods of the interface (i.e. the model) object.
-############################################################
+###################################################################################################################################################
+### GUI Events Functions. They are triggered by direct interaction with the GUI, and they call methods of the interface (i.e. the model) object.###
+###################################################################################################################################################
 
     def click_button_refresh_list_devices(self):
         self.interface.refresh_list_devices()
@@ -621,9 +619,9 @@ class gui(abstract_instrument_interface.abstract_gui):
     def click_button_ShowHidePlot(self):
         self.plot_window.setHidden(not self.plot_window.isHidden())
 
-############################################################
-### END GUI Events Functions
-############################################################
+#################################
+### END GUI Events Functions ####
+#################################
 
     def create_plot(self):
         '''
@@ -646,8 +644,8 @@ class MainWindow(Qt.QWidget):
         self.setWindowTitle(__package__)
 
     def closeEvent(self, event):
-        if self.child:
-            pass#self.child.close()
+        #if self.child:
+        pass#self.child.close()
 
 #################################################################################################
 
@@ -658,10 +656,10 @@ def main():
     
     app = Qt.QApplication(sys.argv)
     window = MainWindow()
-    Interface = interface(app=app,mainwindow=window) 
+    Interface = interface(app=app) 
     Interface.verbose = not(args.decrease_verbose)
     app.aboutToQuit.connect(Interface.close) 
-    view = gui(interface = Interface, parent=window,plot=False) #In this case window is both the MainWindow and the parent of the gui
+    view = gui(interface = Interface, parent=window,plot=False) #In this case window is the parent of the gui
     window.show()
     app.exec()# Start the event loop.
 
