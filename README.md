@@ -21,6 +21,7 @@ pip install pyThorlabsPM100x
 This will install ```pyThorlabsPM100x``` together with all libraries required to run the low-level driver. In order to use the GUI, it is necessary to install additional libraries,
 specified in the ```requirements.txt``` files,
 ```bash
+pip install abstract_instrument_interface>=0.6
 pip install "PyQt5>=5.15.6"
 pip install "pyqtgraph>=0.12.4"
 pip install numpy
