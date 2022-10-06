@@ -14,7 +14,7 @@ widget_containing_interface_GUI.setStyleSheet(".QWidget {\n" \
 
 
 #Create the interface object for the powermeter
-Interface = pyThorlabsPM100x.interface(app=app,mainwindow=window)
+Interface = pyThorlabsPM100x.interface(app=app)
 Interface.verbose = False #set the verbosity of the interface logger to False
 # At any time during the software execution, the power read by the instrument can be accessed via Interface.output['Power']
 # Moreover, one could also set up a signal to automatically call another function whenever the power is updated, by
@@ -35,10 +35,12 @@ gridlayout.addWidget(Qt.QLabel("Additional GUI 3"), 0, 1)
 gridlayout.addWidget(Qt.QLabel("Additional GUI 4"), 1, 1)
 gridlayoutwidget.setLayout(gridlayout)
 
-layout = Qt.QHBoxLayout()
+layout = Qt.QVBoxLayout()
 layout.addWidget(widget_containing_interface_GUI)
 layout.addWidget(gridlayoutwidget)
+layout.addStretch(1)
 window.setLayout(layout)
+
 
 window.show()
 app.exec()# Start the event loop.
