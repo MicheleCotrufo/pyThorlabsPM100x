@@ -11,7 +11,8 @@ import sys
 import argparse
 
 import abstract_instrument_interface
-from pyThorlabsPM100x.driver import ThorlabsPM100x
+import pyThorlabsPM100x.driver_virtual
+import pyThorlabsPM100x.driver
 from pyThorlabsPM100x.plots import PlotObject
 
 graphics_dir = os.path.join(os.path.dirname(__file__), 'graphics')
@@ -85,10 +86,10 @@ class interface(abstract_instrument_interface.abstract_interface):
 
     """
 
-    output = {'Power':0}  #We define this also as class variable, to make it possible to see which data is produced by this interface without having to create an object
+    output = {'Power':0}  #We define this also as class variable. This makes it possible to see which data is produced by this interface without having to create an object
 
     ## SIGNALS THAT WILL BE USED TO COMMUNICATE WITH THE GUI
-    #                                                           | Triggered when ...                                        | Sends as parameter    
+    #                                                           | Triggered when ...                                        | Parameter(s) Sent     
     #                                                       #   -----------------------------------------------------------------------------------------------------------------------         
     sig_list_devices_updated = QtCore.pyqtSignal(list)      #   | List of devices is updated                                | List of devices   
     sig_reading = QtCore.pyqtSignal(int)                    #   | Reading status changes                                    | 1 = Started Reading, 2 = Paused Reading, 3 Stopped Reading
@@ -116,9 +117,13 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.continuous_read = False    # When this is set to True, the data from device are acquired continuosly at the rate set by self.refresh_time
         self.stored_data = []           # List used to store data acquired by device
         ###
-        self.instrument = ThorlabsPM100x() 
+        if ('virtual' in kwargs.keys()) and (kwargs['virtual'] == True):
+            self.instrument = pyThorlabsPM100x.driver_virtual.ThorlabsPM100x() 
+        else:    
+            self.instrument = pyThorlabsPM100x.driver.ThorlabsPM100x() 
         ###
         super().__init__(**kwargs)
+        self.refresh_list_devices()   
         
     def refresh_list_devices(self):
         '''
@@ -126,12 +131,15 @@ class interface(abstract_instrument_interface.abstract_interface):
         '''     
         self.logger.info(f"Looking for devices...") 
         list_valid_devices = self.instrument.list_devices() #Then we read the list of devices
+        self.logger.info(f"Found {len(list_valid_devices)} devices.") 
         self.list_devices = list_valid_devices
-        if(len(list_valid_devices)>0):
-            list_IDNs_and_devices = [dev[1] + " --> " + dev[0] for dev in list_valid_devices] 
+        self.send_list_devices()
+
+    def send_list_devices(self):
+        if(len(self.list_devices)>0):
+            list_IDNs_and_devices = [dev[1] + " --> " + dev[0] for dev in self.list_devices] 
         else:
             list_IDNs_and_devices = []
-        self.logger.info(f"Found {len(list_valid_devices)} devices.") 
         self.sig_list_devices_updated.emit(list_IDNs_and_devices)
 
     def connect_device(self,device_full_name):
@@ -142,7 +150,7 @@ class interface(abstract_instrument_interface.abstract_interface):
         device_name = device_full_name.split(' --> ')[1].lstrip()   # We extract the device address from the device name
         self.logger.info(f"Connecting to device {device_name}...")
         try:
-            (Msg,ID) = self.instrument.connect_device(device_name)      # Try to connect by using the method ConnectDevice of the powermeter object
+            (Msg,ID) = self.instrument.connect_device(device_name)      # Try to connect by using the method connect_device of the device driver
             if(ID==1):  #If connection was successful
                 self.logger.info(f"Connected to device {device_name}.")
                 self.connected_device_name = device_name
@@ -380,7 +388,7 @@ class gui(abstract_instrument_interface.abstract_gui):
 
         ### SET INITIAL STATE OF WIDGETS
         self.edit_RefreshTime.setText(f"{self.interface.settings['refresh_time']:.3f}")
-        self.interface.refresh_list_devices()    #By calling this method, as soon as the gui is created we also look for devices
+        self.interface.send_list_devices()  
         self.on_connection_status_change(self.interface.SIG_DISCONNECTED) #When GUI is created, all widgets are set to the "Disconnected" state              
         ###
 
@@ -422,7 +430,7 @@ class gui(abstract_instrument_interface.abstract_gui):
         self.button_ShowHidePlot = Qt.QPushButton("Show/Hide Plot")
         self.button_ShowHidePlot.setToolTip('Show/Hide Plot.')
 
-        widgets_row2 = [self.button_StartPauseReading,self.button_StopReading,self.label_RefreshTime,self.edit_RefreshTime,self.label_Power,self.edit_Power,self.button_SetZeroPowermeter,self.button_ShowHidePlot]
+        widgets_row2 = [self.button_StartPauseReading,self.button_StopReading,self.button_SetZeroPowermeter,self.label_RefreshTime,self.edit_RefreshTime,self.label_Power,self.edit_Power,self.button_ShowHidePlot]
         widgets_row2_stretches = [0]*len(widgets_row2)
         for w,s in zip(widgets_row2,widgets_row2_stretches):
             hbox2.addWidget(w,stretch=s)
@@ -652,11 +660,13 @@ class MainWindow(Qt.QWidget):
 def main():
     parser = argparse.ArgumentParser(description = "",epilog = "")
     parser.add_argument("-s", "--decrease_verbose", help="Decrease verbosity.", action="store_true")
+    parser.add_argument('-virtual', help=f"Initialize the virtual driver", action="store_true")
     args = parser.parse_args()
+    virtual = args.virtual
     
     app = Qt.QApplication(sys.argv)
     window = MainWindow()
-    Interface = interface(app=app) 
+    Interface = interface(app=app,virtual=virtual) 
     Interface.verbose = not(args.decrease_verbose)
     app.aboutToQuit.connect(Interface.close) 
     view = gui(interface = Interface, parent=window,plot=False) #In this case window is the parent of the gui
