@@ -9,12 +9,10 @@ import logging
 
 
 class PlotObject:
-    def __init__(self,  app,  mainwindow, parent):#, GetData, GetNameData, GetPlotConfig, SetPlotConfig, GetPlottingStyle, PlotSize, **kwargs):
+    def __init__(self,  app, parent):#, GetData, GetNameData, GetPlotConfig, SetPlotConfig, GetPlottingStyle, PlotSize, **kwargs):
         # app           = The pyqt5 QApplication() object
-        # mainwindow    = Main Window of the application
         # parent        = a QWidget (or QMainWindow) object that will be the parent for the gui of this device.
 
-        self.mainwindow = mainwindow
         self.app = app
         self.parent = parent
         
