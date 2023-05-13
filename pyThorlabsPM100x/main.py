@@ -636,7 +636,7 @@ class gui(abstract_instrument_interface.abstract_gui):
         This function creates an additional (separated) window with a pyqtgraph object, which plots the contents of self.stored_data
         '''
         self.plot_window = Qt.QWidget() #This is the widget that will contain the plot. Since it does not have a parent, the plot will be in a floating (separated) window
-        self.plot_object = PlotObject(self.interface.app, self.interface.mainwindow, self.plot_window)
+        self.plot_object = PlotObject(self.interface.app, self.plot_window)
         styles = {"color": "#fff", "font-size": "20px"}
         self.plot_object.graphWidget.setLabel("left", "Power", **styles)
         self.plot_object.graphWidget.setLabel("bottom", "Acqusition #", **styles)
@@ -669,7 +669,7 @@ def main():
     Interface = interface(app=app,virtual=virtual) 
     Interface.verbose = not(args.decrease_verbose)
     app.aboutToQuit.connect(Interface.close) 
-    view = gui(interface = Interface, parent=window,plot=False) #In this case window is the parent of the gui
+    view = gui(interface = Interface, parent=window,plot=True) #In this case window is the parent of the gui
     window.show()
     app.exec()# Start the event loop.
 
