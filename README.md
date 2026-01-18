@@ -3,6 +3,8 @@
 ```pyThorlabsPM100x``` is a Python library/GUI interface to control the Thorlabs consoles PM100A and PM100D. The package is composed of two parts, a
 low-level driver to perform basic operations, and high-level GUI, written with PyQt5, which can be easily embedded into other GUIs.
 
+The interface can work either as a stand-alone application, or as a module of [ergastirio](https://github.com/MicheleCotrufo/ergastirio).
+
 ## Table of Contents
  - [Installation](#installation)
   - [Usage via the low-level driver](#usage-via-the-low-level-driver)
