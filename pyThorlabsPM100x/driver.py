@@ -234,7 +234,7 @@ class ThorlabsPM100x:
         if(self.connected):
             try:
                 self.being_zeroed = 1
-                ID = self.instrument.write('sense:correction:collect:zero')
+                self.instrument.write('sense:correction:collect:zero')
                 self.being_zeroed = 0
                 ID = 1
             except visa.VisaIOError:
