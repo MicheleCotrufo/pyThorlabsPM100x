@@ -87,6 +87,7 @@ class ThorlabsPM100x:
         return (Msg,ID)
 
     def read_parameters_upon_connection(self):
+        self.power_units
         self.wavelength
         self.read_min_max_wavelength()
         self.power
@@ -124,16 +125,18 @@ class ThorlabsPM100x:
             if self.device_connected == 'virtualdevice3':
                 phase = math.pi
             Msg1 = math.sin(phase+2*math.pi*time.time()/5) + 1
-            Msg2 = 'W'
             self._power = float(Msg1)
-            self._power_units = str(Msg2).strip('\n') 
         else:
             self._power , self._power_units = None , ''
         return (self._power , self._power_units)
 
     @property
     def power_units(self):
-        return  'W'
+        if not(self.connected):
+            raise RuntimeError("No powermeter is currently connected.")
+        Msg = 'W'
+        self._power_units = str(Msg).strip('\n') 
+        return  self._power_units
 
     @property
     def wavelength(self):
@@ -167,7 +170,6 @@ class ThorlabsPM100x:
             raise ValueError(f"Wavelength must be between {self.min_wavelength} and {self.max_wavelength}.")
         #self.instrument.write('SENS:CORR:WAV ' + str(wl))
         self._wavelength = wl
-        return self._wavelength
 
     def read_min_max_wavelength(self):
         if not(self.connected):
@@ -224,7 +226,6 @@ class ThorlabsPM100x:
         string = 'ON' if status else 'OFF'
         #self.instrument.write('POW:DC:RANG:AUTO ' + string)
         self._auto_power_range = status
-        return self._auto_power_range
 
     @property
     def power_range(self):
@@ -246,7 +247,6 @@ class ThorlabsPM100x:
             raise ValueError("Power must be a positive number.")
         #self.instrument.write('POW:DC:RANG ' + str(power))
         self._power_range = power
-        return self._power_range
 
 
     def set_zero(self):
