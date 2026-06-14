@@ -94,6 +94,7 @@ class ThorlabsPM100x:
         return (Msg,ID)
 
     def read_parameters_upon_connection(self):
+        self.power_units
         self.wavelength
         self.read_min_max_wavelength()
         self.power
@@ -124,16 +125,18 @@ class ThorlabsPM100x:
             raise RuntimeError("No powermeter is currently connected.")
         if(self.being_zeroed==0):
             Msg1 = self.instrument.query('measure:power?')
-            Msg2 = self.instrument.query('power:dc:unit?')
             self._power = float(Msg1)
-            self._power_units = str(Msg2).strip('\n') 
         else:
             self._power , self._power_units = None , ''
         return (self._power , self._power_units)
 
     @property
     def power_units(self):
-        return  'W'
+        if not(self.connected):
+            raise RuntimeError("No powermeter is currently connected.")
+        Msg = self.instrument.query('power:dc:unit?')
+        self._power_units = str(Msg).strip('\n') 
+        return  self._power_units
 
     @property
     def wavelength(self):
