@@ -160,7 +160,6 @@ class ThorlabsPM100x:
             raise ValueError(f"Wavelength must be between {self.min_wavelength} and {self.max_wavelength}.")
         self.instrument.write('SENS:CORR:WAV ' + str(wl))
         self._wavelength = wl
-        return self._wavelength
 
     def read_min_max_wavelength(self):
         if not(self.connected):
@@ -207,7 +206,6 @@ class ThorlabsPM100x:
         string = 'ON' if status else 'OFF'
         self.instrument.write('POW:DC:RANG:AUTO ' + string)
         self._auto_power_range = status
-        return self._auto_power_range
 
     @property
     def power_range(self):
@@ -229,7 +227,6 @@ class ThorlabsPM100x:
             raise ValueError("Power must be a positive number.")
         self.instrument.write('POW:DC:RANG ' + str(power))
         self._power_range = power
-        return self._power_range
 
 
     def set_zero(self):
