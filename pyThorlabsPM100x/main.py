@@ -209,7 +209,7 @@ class interface(abstract_instrument_interface.abstract_interface):
             if int(self.instrument.wavelength) == int(float(wl)): #in this case the number in the refresh time edit box is the same as the wavelength currently set
                     return True
             self.logger.info(f"Setting the wavelength to {wl} for the device {self.connected_device_name}...")
-        except ValueError as e:
+        except (ValueError,TypeError) as e:
             self.logger.error(f"The wavelength must be a valid number.")
             self.sig_wavelength.emit(self.instrument.wavelength)
             return False
