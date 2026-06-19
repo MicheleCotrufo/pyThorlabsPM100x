@@ -41,7 +41,7 @@ class ThorlabsPM100x:
                         ['PM100A',   'Thorlabs,PM100A']
                         ]
 
-    def __init__(self,model=None):
+    def __init__(self,model=None, virtual=False):
         """
         Parameters
         ----------
@@ -58,7 +58,13 @@ class ThorlabsPM100x:
             models_supported = [model[0] for model in self.model_identifiers] 
             if not(model in models_supported):
                    raise RuntimeError("The specified model is not supported. Supported models are " + ", ".join(models_supported))
-        self.rm = visa.ResourceManager()
+        if virtual:
+            import pyThorlabsPM100x.pyvisa_virtual as _visa
+            print(1)
+        else:
+            import pyvisa as _visa
+        self._VisaIOError = _visa.VisaIOError
+        self.rm = _visa.ResourceManager()
         self.connected = False
         self.model = None       #model of the device currently connected. 
         self.model_user = model #model specified by user. This variable is only used if the user specified a specific model
@@ -105,7 +111,6 @@ class ThorlabsPM100x:
                 #    self.rm.close()                            
                 #    #self.rm.visalib._registry.clear()   
 
-        self.rm = visa.ResourceManager()
         self.list_all_devices = self.rm.list_resources()
         self.list_valid_devices = [] 
         for addr in self.list_all_devices:

@@ -13,7 +13,6 @@ import sys
 import argparse
 
 import abstract_instrument_interface
-import pyThorlabsPM100x.driver_virtual
 import pyThorlabsPM100x.driver
 from pyThorlabsPM100x.plots import PlotObject
 
@@ -119,10 +118,8 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.continuous_read = False    # When this is set to True, the data from device are acquired continuosly at the rate set by self.refresh_time
         self.stored_data = []           # List used to store data acquired by device
         ###
-        if ('virtual' in kwargs.keys()) and (kwargs['virtual'] == True):
-            self.instrument = pyThorlabsPM100x.driver_virtual.ThorlabsPM100x() 
-        else:    
-            self.instrument = pyThorlabsPM100x.driver.ThorlabsPM100x() 
+        virtual = kwargs.get('virtual', False)
+        self.instrument = pyThorlabsPM100x.driver.ThorlabsPM100x(virtual=virtual)
         ###
         super().__init__(**kwargs)
         self.refresh_list_devices()   
