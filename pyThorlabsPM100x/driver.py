@@ -1,7 +1,38 @@
+''' Note: most of docstrings in this file have been generated automatically by Claude. AI can make mistakes'''
+
 import pyvisa as visa
 
 class ThorlabsPM100x:
-
+    """
+    Low-level driver to communicate with Thorlabs PM100A and PM100D powermeter consoles via VISA (NI-VISA backend).
+ 
+    The console must be set to "PM100D NI-VISA" modality (and not to "TLPM" modality) in order to be detected
+    by this driver. See the project README for details on how to switch modality.
+ 
+    Attributes
+    ----------
+    model_identifiers : list of [str, str]
+        Each element is ``[model_name, idn_substring]``. A device is recognized as ``model_name``
+        if ``idn_substring`` is contained in the answer to the ``*IDN?`` query.
+    rm : pyvisa.ResourceManager
+        The PyVISA resource manager used to discover and open VISA resources.
+    connected : bool
+        ``True`` if a device is currently connected, ``False`` otherwise.
+    model : str or None
+        Model of the device currently connected (``'PM100A'`` or ``'PM100D'``), or ``None`` if not connected.
+    model_user : str or None
+        Model specified by the user when instantiating this driver (if any). When set, only devices
+        matching this model are returned by :meth:`list_devices` and accepted by :meth:`connect_device`.
+    being_zeroed : int
+        Flag (0/1) set to 1 while the powermeter is performing its zeroing routine. While set, reading
+        :attr:`power` does not query the instrument and returns ``(None, '')``.
+    min_wavelength : int or None
+        Minimum operating wavelength (in nm) supported by the connected device. Populated by
+        :meth:`read_min_max_wavelength`, which is called automatically upon connection.
+    max_wavelength : int or None
+        Maximum operating wavelength (in nm) supported by the connected device. Populated by
+        :meth:`read_min_max_wavelength`, which is called automatically upon connection.
+    """
     #The list model_identifiers is used to identify a device as a Thorlabs console, and to detect its model.
     #Each element of the list is a list of two strings. If the second string is contained in the device identity (i.e. the answer to '*IDN?')
     #then the model device is given by the first string
@@ -11,6 +42,18 @@ class ThorlabsPM100x:
                         ]
 
     def __init__(self,model=None):
+        """
+        Parameters
+        ----------
+        model : str, optional
+            If specified, restricts this driver instance to only recognize/connect to devices of this model.
+            Must be one of the model names listed in :attr:`model_identifiers` (currently ``'PM100A'`` or ``'PM100D'``).
+ 
+        Raises
+        ------
+        RuntimeError
+            If ``model`` is specified but is not one of the supported models.
+        """
         if model:
             models_supported = [model[0] for model in self.model_identifiers] 
             if not(model in models_supported):
@@ -36,22 +79,31 @@ class ThorlabsPM100x:
         
     def list_devices(self):
         '''
-        Scans all potential devices, ask for their identity and check if any of them is a valid device supported by this driver (by comparing their identity with the elements of model_identifiers)
-
+        Scan all VISA resources currently visible to the system, query their identity (``*IDN?``), and
+        check whether any of them is a powermeter console supported by this driver (by comparing the
+        identity string with the entries of :attr:`model_identifiers`).
+ 
+        Serial (``ASRL``) resources are skipped, since Thorlabs powermeter consoles are not accessed
+        over a plain serial port.
+ 
+        If :attr:`model_user` was set (i.e. the user requested a specific model when instantiating this
+        driver), only devices matching that model are included in the returned list.
+ 
         Returns
         -------
-        list_valid_devices, list
-            A list of all found valid devices. Each element of the list is a list of three strings, in the format [address,identity,model]
-
+        list_valid_devices : list of [str, str, str]
+            A list of all found valid devices. Each element is a list of three strings, in the format
+            ``[address, idn, model]``, where ``address`` is the VISA resource address, ``idn`` is the
+            raw answer to ``*IDN?``, and ``model`` is either ``'PM100A'`` or ``'PM100D'``.
         '''
 
-        #This makes sure that the Resource Manager of pyvisa (if it was already initialized) is closed and cleared before looking for available devices
-        #If a device was previously connected but was unplugged/turned off without doing a proper disconnection, it will not show up in the list  
-        #of available devices (or it will generate an error when querying with '*IDN?'), unless we first close and clear the rm object.
-        #However, when using this script together with other instruments which depend on pyvisa (e.g. in Ergastirio), this would interfere with other instrument. So for now is commented out
-        #if hasattr(self, 'rm'):                 
-        #    self.rm.close()                            
-        #    #self.rm.visalib._registry.clear()   
+                #This makes sure that the Resource Manager of pyvisa (if it was already initialized) is closed and cleared before looking for available devices
+                #If a device was previously connected but was unplugged/turned off without doing a proper disconnection, it will not show up in the list  
+                #of available devices (or it will generate an error when querying with '*IDN?'), unless we first close and clear the rm object.
+                #However, when using this script together with other instruments which depend on pyvisa (e.g. in Ergastirio), this would interfere with other instrument. So for now is commented out
+                #if hasattr(self, 'rm'):                 
+                #    self.rm.close()                            
+                #    #self.rm.visalib._registry.clear()   
 
         self.rm = visa.ResourceManager()
         self.list_all_devices = self.rm.list_resources()
@@ -73,6 +125,30 @@ class ThorlabsPM100x:
         return self.list_valid_devices
     
     def connect_device(self,device_addr):
+        '''
+        Attempt to connect to the device identified by ``device_addr``.
+ 
+        The device address is first validated against the list of currently available, supported
+        devices (obtained via :meth:`list_devices`). Upon successful connection, all relevant
+        instrument parameters (wavelength, power range, etc.) are read once via
+        :meth:`read_parameters_upon_connection`.
+ 
+        Parameters
+        ----------
+        device_addr : str
+            VISA resource address of the device to connect to (as returned by :meth:`list_devices`).
+ 
+        Returns
+        -------
+        (Msg, ID) : (str, int)
+            ``Msg`` is either the identity string (``*IDN?`` answer) of the connected device, or an
+            error message. ``ID`` is 1 if connection was successful, 0 otherwise.
+ 
+        Raises
+        ------
+        ValueError
+            If ``device_addr`` does not correspond to any currently available, supported device.
+        '''
         self.list_devices()
         device_addresses = [dev[0] for dev in self.list_valid_devices]
         if (device_addr in device_addresses):
@@ -94,6 +170,12 @@ class ThorlabsPM100x:
         return (Msg,ID)
 
     def read_parameters_upon_connection(self):
+        '''
+        Query the instrument once for all relevant parameters (power units, wavelength, wavelength range, power,
+        power range, auto power range status) and cache them in the corresponding instance attributes.
+ 
+        This is called automatically by :meth:`connect_device` right after a successful connection.
+        '''
         self.power_units
         self.wavelength
         self.read_min_max_wavelength()
@@ -104,6 +186,21 @@ class ThorlabsPM100x:
         self.power_range
 
     def disconnect_device(self):
+        '''
+        Disconnect the currently connected device, disabling its remote-control mode and closing the
+        underlying VISA resource.
+ 
+        Returns
+        -------
+        (Msg, ID) : (str, int)
+            ``Msg`` is a confirmation message, or the exception raised while disconnecting.
+            ``ID`` is 1 if disconnection was successful, 0 otherwise.
+ 
+        Raises
+        ------
+        RuntimeError
+            If no device is currently connected.
+        '''
         if(self.connected == True):
             try:   
                 self.instrument.control_ren(False)  # Disable remote mode
@@ -120,6 +217,17 @@ class ThorlabsPM100x:
 
     @property
     def power(self):
+        '''
+        (float, str): The power currently measured by the console, and its units.
+ 
+        Querying this property issues a VISA query to the instrument (``measure:power?``). While :attr:`being_zeroed` is set (i.e. while the instrument is performing
+        its zeroing routine), no query is sent and ``(None, '')`` is returned instead.
+ 
+        Raises
+        ------
+        RuntimeError
+            If no device is currently connected.
+        '''
         if not(self.connected):
             self._power , self._power_units = None , ''
             raise RuntimeError("No powermeter is currently connected.")
@@ -132,6 +240,9 @@ class ThorlabsPM100x:
 
     @property
     def power_units(self):
+        '''
+        str: The units of the power readings returned by (``power:dc:unit?``).
+        '''
         if not(self.connected):
             raise RuntimeError("No powermeter is currently connected.")
         Msg = self.instrument.query('power:dc:unit?')
@@ -140,6 +251,25 @@ class ThorlabsPM100x:
 
     @property
     def wavelength(self):
+        '''
+        int: The operating (calibration) wavelength of the console, in nanometers.
+ 
+        Reading this property queries the instrument (``SENS:CORR:WAV?``).
+        Setting this property writes the new wavelength to the instrument (``SENS:CORR:WAV <value>``).
+        The value must be an integer between :attr:`min_wavelength` and :attr:`max_wavelength`
+        (inclusive), which depend on the specific powermeter head connected to the console and are
+        populated by :meth:`read_min_max_wavelength`.
+ 
+        Raises
+        ------
+        RuntimeError
+            If no device is currently connected.
+        TypeError
+            (setter only) If the assigned value cannot be converted to ``int``.
+        ValueError
+            (setter only) If the assigned value is negative or outside the range
+            ``[min_wavelength, max_wavelength]``.
+        '''
         if not(self.connected):
             self._wavelength = None
             raise RuntimeError("No powermeter is currently connected.")
@@ -165,6 +295,24 @@ class ThorlabsPM100x:
         self._wavelength = wl
 
     def read_min_max_wavelength(self):
+        '''
+        Query the instrument for the minimum and maximum operating wavelengths supported by the
+        currently connected powermeter head, and store them in :attr:`min_wavelength` and
+        :attr:`max_wavelength`.
+ 
+        This is called automatically by :meth:`read_parameters_upon_connection` upon connection, since
+        these bounds depend on the powermeter head and do not change afterwards.
+ 
+        Returns
+        -------
+        (min_wavelength, max_wavelength) : (int, int)
+            The minimum and maximum operating wavelengths, in nanometers.
+ 
+        Raises
+        ------
+        RuntimeError
+            If no device is currently connected.
+        '''
         if not(self.connected):
             raise RuntimeError("No powermeter is currently connected.")
         Msg = self.instrument.query('SENS:CORR:WAV? MIN')
@@ -175,6 +323,18 @@ class ThorlabsPM100x:
 
     @property
     def min_power_range(self):
+        '''
+        float: The minimum power range available for the current wavelength, defined as the maximum
+        power measurable within that range. Queries the instrument (``POW:DC:RANG? MIN``).
+ 
+        This value depends on the powermeter head and, for the same head, may also depend on the
+        currently set wavelength.
+ 
+        Raises
+        ------
+        RuntimeError
+            If no device is currently connected.
+        '''
         if not(self.connected):
             self._min_power_range = None
             raise RuntimeError("No powermeter is currently connected.")
@@ -184,6 +344,18 @@ class ThorlabsPM100x:
 
     @property
     def max_power_range(self):
+        '''
+        float: The maximum power range available for the current wavelength, defined as the maximum
+        power measurable within that range. Queries the instrument (``POW:DC:RANG? MAX``).
+ 
+        This value depends on the powermeter head and, for the same head, may also depend on the
+        currently set wavelength.
+ 
+        Raises
+        ------
+        RuntimeError
+            If no device is currently connected.
+        '''
         if not(self.connected):
             self._max_power_range = None
             raise RuntimeError("No powermeter is currently connected.")
@@ -193,6 +365,20 @@ class ThorlabsPM100x:
 
     @property
     def auto_power_range(self):
+        '''
+        bool: Whether the console's automatic power-ranging mode is currently enabled.
+ 
+        Reading this property queries the instrument (``POW:DC:RANG:AUTO?``).
+        Setting this property enables (``True``) or disables (``False``) automatic power ranging
+        (``POW:DC:RANG:AUTO ON``/``OFF``).
+ 
+        Raises
+        ------
+        RuntimeError
+            If no device is currently connected.
+        TypeError
+            (setter only) If the assigned value is not a ``bool``.
+        '''
         if not(self.connected):
             self._auto_power_range = None
             raise RuntimeError("No powermeter is currently connected.")
@@ -212,7 +398,24 @@ class ThorlabsPM100x:
 
     @property
     def power_range(self):
-        ''' Returns the current power range, defined as the maximum power measureable in the current power range'''
+        '''
+        float: The current power range, defined as the maximum power measurable within
+        this range. Queries the instrument (``POW:DC:RANG?``).
+ 
+        Setting this property requests the instrument to change to the smallest available power
+        range that can still measure the requested value; the instrument may therefore end up in a
+        power range different from (but containing) the requested value. Read this property again
+        after setting it to obtain the actual power range selected by the instrument.
+ 
+        Raises
+        ------
+        RuntimeError
+            If no device is currently connected.
+        TypeError
+            (setter only) If the assigned value is not an ``int`` or ``float``.
+        ValueError
+            (setter only) If the assigned value is negative.
+        '''
         if not(self.connected):
             self._power_range = None
             raise RuntimeError("No powermeter is currently connected.")
@@ -233,6 +436,17 @@ class ThorlabsPM100x:
 
 
     def set_zero(self):
+        '''
+        Trigger the zeroing routine of the console (``sense:correction:collect:zero``).
+ 
+        While the zeroing routine is running, :attr:`being_zeroed` is set to 1, and reading
+        :attr:`power` will return ``(None, '')`` instead of querying the instrument.
+ 
+        Returns
+        -------
+        ID : int
+            1 if the command was sent successfully, 0 if a VISA error occurred.
+        '''
         ID = 0
         if(self.connected):
             try:
@@ -247,13 +461,37 @@ class ThorlabsPM100x:
 
     
     def move_to_next_power_range(self,direction,LastPowerRange = None):
-        '''#Increase or decrease the power range, based on the value of the input variable direction
-        Note: the VISA comnmands of the powermeter do not allow to simply "move" to the next power range, but only to specify the maximum power one would like to measure.
-        The powermeter then sets the power range to the smallest available range which can still measure the desired power. This can be tricky to handle because, for example
-        the bounds of each power range also depend on the wavelength. So, simply increasing the power by, e.g., a factor of 10, might sometimes fail, i.e. it might either not changethe power range,
-        or it might skipp one of the ranges.
-        To address this, I here use an adaptive alghoritm which progressively increases (or decreases) the power by a factor smaller than 10 and everytime it checks if the powermeter range has actually changed
-        As soon as the powermeter range really changes, it stops.'''
+        '''
+        Increase or decrease the power range of the console by one step.
+ 
+        The VISA interface of the powermeter does not allow directly "stepping" to the next or
+        previous power range: it only allows requesting a target maximum power, and the instrument
+        then selects the smallest available range that can still measure that power. Because the
+        boundaries of each power range also depend on the current wavelength, simply multiplying or
+        dividing the current range by a fixed factor (e.g. 10) can sometimes fail to change the range
+        at all, or can skip over a range entirely.
+ 
+        To work around this, this method uses an adaptive algorithm: it repeatedly requests a target
+        power range scaled by a factor smaller than 10 (currently 9), checking after each attempt
+        whether the instrument's actual power range has changed. As soon as the power range changes,
+        the method returns. The method recurses on itself (with an updated target) until the power
+        range changes or until the requested target falls outside
+        [:attr:`min_power_range`, :attr:`max_power_range`], in which case the method returns without
+        changing anything.
+ 
+        Parameters
+        ----------
+        direction : int
+            ``+1`` to increase the power range, ``-1`` to decrease it.
+        LastPowerRange : float, optional
+            Internal parameter used during recursive calls to track the most recently requested
+            target power range. Should not normally be supplied by the caller.
+ 
+        Raises
+        ------
+        ValueError
+            If ``direction`` is not ``+1`` or ``-1``.
+        '''
 
         if not(direction==+1 or direction==-1):
             raise ValueError("The input variable 'direction' must be either +1 (to increase power range) or -1 (to decrease it).") 

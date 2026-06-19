@@ -1,3 +1,5 @@
+''' Note: most of docstrings in this file have been generated automatically by Claude. AI can make mistakes'''
+
 import os
 import PyQt5
 dirname = os.path.dirname(PyQt5.__file__)
