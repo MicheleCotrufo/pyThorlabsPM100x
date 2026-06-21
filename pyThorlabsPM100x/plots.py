@@ -2,10 +2,7 @@
 
 
 import PyQt5.QtWidgets as Qt# QApplication, QWidget, QMainWindow, QPushButton, QHBoxLayout
-import PyQt5.QtGui as QtGui
-import PyQt5.QtCore as QtCore
 import pyqtgraph as pg
-import logging
 
 
 class PlotObject:
