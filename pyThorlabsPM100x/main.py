@@ -23,7 +23,7 @@ graphics_dir = os.path.join(os.path.dirname(__file__), 'graphics')
 
 class interface(abstract_instrument_interface.abstract_interface):
     """
-    Create a high-level interface with the device, validates input data and perform high-level tasks such as periodically reading data from the instrument.
+    Create a high-level interface with the device, validate input data and perform high-level tasks such as periodically reading data from the instrument.
     It uses signals (i.e. QtCore.pyqtSignal objects) to notify whenever relevant data has changes. These signals are typically received by the GUI
     Several general-purpose attributes and methods are defined in the class abstract_interface defined in abstract_instrument_interface
     ...
@@ -35,7 +35,7 @@ class interface(abstract_instrument_interface.abstract_interface):
     connected_device_name : str
         Name of the physical device currently connected to this interface 
     continuous_read : bool 
-        When this is set to True, the data from device are acquired continuosly at the rate set by refresh_time       
+        When this is set to True, the data from device are acquired continuously at the rate set by refresh_time       
     stored_data : list
         List used to store data acquired by this interface
     power_units : str
@@ -115,7 +115,7 @@ class interface(abstract_instrument_interface.abstract_interface):
         
         self.list_devices = []          #list of devices found 
         self.connected_device_name = ''
-        self.continuous_read = False    # When this is set to True, the data from device are acquired continuosly at the rate set by self.refresh_time
+        self.continuous_read = False    # When this is set to True, the data from device are acquired continuously at the rate set by self.refresh_time
         self.stored_data = []           # List used to store data acquired by device
         ###
         virtual = kwargs.get('virtual', False)
@@ -170,7 +170,7 @@ class interface(abstract_instrument_interface.abstract_interface):
             self.set_disconnected_state()
         else: #If disconnection was not successful
             self.logger.error(f"Error: {Msg}")
-            self.set_disconnected_state() #When disconnection is not succeful, it is typically because the device alredy lost connection
+            self.set_disconnected_state() #When disconnection is not successful, it is typically because the device alredy lost connection
                                           #for some reason. In this case, it is still useful to have all widgets reset to disconnected state      
     def close(self,**kwargs):
         super().close(**kwargs)           
@@ -224,10 +224,11 @@ class interface(abstract_instrument_interface.abstract_interface):
   
     def read_wavelength(self):
         self.logger.info(f"Reading current wavelength from device {self.connected_device_name}...") 
-        self.wavelength = int(self.instrument.wavelength)
-        if self.wavelength == None:
+        wl = self.instrument.wavelength
+        if wl == None:
             self.logger.error(f"An error occurred while reading the wavelength from this device.")
             return
+        self.wavelength = int(wl)
         self.sig_wavelength.emit(self.instrument.wavelength)
         self.logger.info(f"Current wavelength is {self.wavelength}.") 
         return
@@ -250,10 +251,11 @@ class interface(abstract_instrument_interface.abstract_interface):
 
     def read_power_range(self):
         self.logger.info(f"Reading current power range from device {self.connected_device_name}...") 
-        self.power_range = self.instrument.power_range
-        if self.power_range == None:
+        pow_range = self.instrument.power_range
+        if pow_range == None:
             self.logger.error(f"An error occurred while reading the power range from this device.")
             return
+        self.power_range = pow_range
         self.sig_power_range.emit(self.power_range)
         self.logger.info(f"Current power range is {self.power_range}.") 
 
@@ -301,9 +303,9 @@ class interface(abstract_instrument_interface.abstract_interface):
             return
         #self.logger.info(f"Updating wavelength and refresh time before starting reading...")       
         self.sig_reading.emit(self.SIG_READING_START) # This signal will be caught by the GUI
-        self.continuous_read = True #Until this variable is set to True, the function UpdatePower will be repeated continuosly 
+        self.continuous_read = True #Until this variable is set to True, the function UpdatePower will be repeated continuously 
         self.logger.info(f"Starting reading from device {self.connected_device_name}...")
-        # Call the function self.update(), which will do stome suff (read power and store it in a global variable) and then call itself continuosly until the variable self.continuous_read is set to False
+        # Call the function self.update(), which will do stome suff (read power and store it in a global variable) and then call itself continuously until the variable self.continuous_read is set to False
         self.update()
         return
  
@@ -521,7 +523,7 @@ class gui(abstract_instrument_interface.abstract_gui):
             self.button_ConnectDevice.setText("Disconnect")
             #If a self.plot_object was created, update window title with powermeter name and vertical axis of plot with current Power units
             if self.plot_object: 
-                self.plot_object.graphWidget.setLabel("left", f"Power [{self.interface.instrument._power_units}]")
+                self.plot_object.graphWidget.setLabel("left", f"Power [{self.interface.power_units}]")
                 self.plot_window.setWindowTitle(f"Powermeter: {self.interface.connected_device_name}")
 
     def on_reading_status_change(self,status):
@@ -638,7 +640,7 @@ class gui(abstract_instrument_interface.abstract_gui):
         self.plot_object = PlotObject(self.interface.app, self.plot_window)
         styles = {"color": "#fff", "font-size": "20px"}
         self.plot_object.graphWidget.setLabel("left", "Power", **styles)
-        self.plot_object.graphWidget.setLabel("bottom", "Acqusition #", **styles)
+        self.plot_object.graphWidget.setLabel("bottom", "Acquisition #", **styles)
         self.plot_window.setWindowTitle(f"Powermeter: {self.interface.connected_device_name}")
         self.plot_window.show()
         self.plot_window.setHidden(True)
@@ -650,9 +652,9 @@ class MainWindow(Qt.QWidget):
         super().__init__()
         self.setWindowTitle(__package__)
 
-    def closeEvent(self, event):
-        #if self.child:
-        pass#self.child.close()
+ #   def closeEvent(self, event):
+ #       #if self.child:
+ #       pass#self.child.close()
 
 #################################################################################################
 
