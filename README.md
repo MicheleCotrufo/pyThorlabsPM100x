@@ -150,35 +150,35 @@ in the command prompt will start the GUI.
 The GUI controller can also be easily integrated within a larger graphical interface, as shown in the example [here](https://github.com/MicheleCotrufo/pyThorlabsPM100x/blob/master/examples/embedding_in_gui.py).
 
 ```python
-import PyQt5
-import PyQt5.QtWidgets as Qt# QApplication, QWidget, QMainWindow, QPushButton, QHBoxLayout
+import PyQt5.QtWidgets as Qt  # QApplication, QWidget, QGridLayout, QLabel, QVBoxLayout
 import pyThorlabsPM100x
-    
+
 app = Qt.QApplication([])
 window = Qt.QWidget()
 
-#The GUI needs to be contained inside a widget object
+# The GUI needs to be contained inside a widget object
 widget_containing_interface_GUI = Qt.QWidget()
-widget_containing_interface_GUI.setStyleSheet(".QWidget {\n" \
-            + "border: 1px solid black;\n" \
-            + "border-radius: 4px;\n" \
-            + "}") 
+widget_containing_interface_GUI.setStyleSheet(
+    ".QWidget {\n"
+    "border: 1px solid black;\n"
+    "border-radius: 4px;\n"
+    "}"
+)
 
-
-#Create the interface object for the powermeter
+# Create the interface object for the powermeter
 Interface = pyThorlabsPM100x.interface(app=app)
-Interface.verbose = False #set the verbosity of the interface logger to False
+Interface.verbose = False  # set the verbosity of the interface logger to False
 # At any time during the software execution, the power read by the instrument can be accessed via Interface.output['Power']
 # Moreover, one could also set up a signal to automatically call another function whenever the power is updated, by
 #
-#       Interface.sig_updated_data.connect(foo)    
+#       Interface.sig_updated_data.connect(foo)
 #
 # Every time the power is read from the instrument, the function foo is called and the list [power,power_units] is passed as argument
 
-#Create the GUI for the powermeter
-gui = pyThorlabsPM100x.gui(interface = Interface, parent=widget_containing_interface_GUI,plot=False)
+# Create the GUI for the powermeter
+view = pyThorlabsPM100x.gui(interface=Interface, parent=widget_containing_interface_GUI, plot=False)
 
-#Create additional GUI
+# Create additional GUI
 gridlayoutwidget = Qt.QWidget()
 gridlayout = Qt.QGridLayout()
 gridlayout.addWidget(Qt.QLabel("Additional GUI 1"), 0, 0)
@@ -193,7 +193,6 @@ layout.addWidget(gridlayoutwidget)
 layout.addStretch(1)
 window.setLayout(layout)
 
-
 window.show()
-app.exec()# Start the event loop.
+app.exec()  # Start the event loop.
 ```
