@@ -381,7 +381,7 @@ class interface(abstract_instrument_interface.abstract_interface):
         '''
         self.logger.info(f"Reading current power range from device {self.connected_device_name}...") 
         pow_range = self.instrument.power_range
-        if self.pow_range == None:
+        if pow_range == None:
             self.logger.error(f"An error occurred while reading the power range from this device.")
             return
         self.power_range = pow_range
