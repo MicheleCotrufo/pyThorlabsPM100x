@@ -1,7 +1,5 @@
 ''' Note: most of docstrings in this file have been generated automatically by Claude. AI can make mistakes'''
 
-import pyvisa as visa
-
 class ThorlabsPM100x:
     """
     Low-level driver to communicate with Thorlabs PM100A and PM100D powermeter consoles via VISA (NI-VISA backend).
@@ -127,8 +125,8 @@ class ThorlabsPM100x:
                                 break
                             self.list_valid_devices.append([addr,idn,model[0]])
                     instrument.before_close()
-                    instrument.close()     
-                except visa.VisaIOError:
+                    instrument.close()
+                except self._VisaIOError:
                     pass
         return self.list_valid_devices
     
@@ -167,9 +165,9 @@ class ThorlabsPM100x:
                     if model[1] in Msg:
                         self.model = model[0]
                 ID = 1
-            except visa.VisaIOError:
+            except self._VisaIOError:
                 Msg = "Error while connecting."
-                ID = 0 
+                ID = 0
         else:
             raise ValueError("The specified address is not a valid device address.")
         if(ID==1):
@@ -479,7 +477,7 @@ class ThorlabsPM100x:
                 self.instrument.write('sense:correction:collect:zero')
                 self.being_zeroed = 0
                 ID = 1
-            except visa.VisaIOError:
+            except self._VisaIOError:
                 ID = 0
                 self.being_zeroed = 0
                 pass
