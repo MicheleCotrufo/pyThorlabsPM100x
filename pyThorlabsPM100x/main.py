@@ -5,7 +5,7 @@ import PyQt5
 dirname = os.path.dirname(PyQt5.__file__)
 plugin_path = os.path.join(dirname, 'plugins', 'platforms')
 os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = plugin_path
-import PyQt5.QtWidgets as Qt# QApplication, QWidget, QMainWindow, QPushButton, QHBoxLayout
+import PyQt5.QtWidgets as Qt  # QApplication, QWidget, QPushButton, QHBoxLayout
 import PyQt5.QtGui as QtGui
 import PyQt5.QtCore as QtCore
 import logging
@@ -170,8 +170,9 @@ class interface(abstract_instrument_interface.abstract_interface):
         device_full_name : str
             A string of the form ``"<idn> --> <address>"``, as produced by
             :meth:`send_list_devices` and displayed in the GUI combo box. The VISA
-            address is extracted from the part after ``" --> "``. If empty, an error
-            is logged and the method returns immediately.
+            address is extracted from the part after ``" --> "``. If empty, or if it
+            does not contain the ``" --> "`` separator, an error is logged and the
+            method returns immediately.
 
         Notes
         -----
@@ -179,11 +180,16 @@ class interface(abstract_instrument_interface.abstract_interface):
         wavelength, power range, and auto-ranging status, and starts continuous reading.
         On failure, calls :meth:`set_disconnected_state` and logs an error.
         '''
-        if(device_full_name==''): 
+        if(device_full_name==''):
             self.logger.error("No valid device has been selected.")
             return
         self.set_connecting_state()
-        device_name = device_full_name.split(' --> ')[1].lstrip()   # We extract the device address from the device name
+        try:
+            device_name = device_full_name.split(' --> ')[1].lstrip()   # We extract the device address from the device name
+        except IndexError:
+            self.logger.error(f"Invalid device identifier: {device_full_name!r}")
+            self.set_disconnected_state()
+            return
         self.logger.info(f"Connecting to device {device_name}...")
         try:
             (Msg,ID) = self.instrument.connect_device(device_name)      # Try to connect by using the method connect_device of the device driver
@@ -212,7 +218,7 @@ class interface(abstract_instrument_interface.abstract_interface):
         (Msg,ID) = self.instrument.disconnect_device()
         if(ID==1): # If disconnection was successful
             self.logger.info(f"Disconnected from device {self.connected_device_name}.")
-            self.continuous_read = 0 # We set this variable to 0 so that the continuous reading from the powermeter will stop
+            self.continuous_read = False # We set this variable to False so that the continuous reading from the powermeter will stop
             self.set_disconnected_state()
         else: #If disconnection was not successful
             self.logger.error(f"Error: {Msg}")
@@ -326,13 +332,14 @@ class interface(abstract_instrument_interface.abstract_interface):
         Read the current operating wavelength from the device, cache it in
         :attr:`wavelength`, and emit :attr:`sig_wavelength`.
 
-        If the driver returns ``None`` (unexpected), an error is logged and the
-        method returns without emitting.
+        If reading the wavelength fails (e.g. the device got disconnected), an
+        error is logged and the method returns without emitting.
         '''
-        self.logger.info(f"Reading current wavelength from device {self.connected_device_name}...") 
-        wl = self.instrument.wavelength
-        if wl == None:
-            self.logger.error(f"An error occurred while reading the wavelength from this device.")
+        self.logger.info(f"Reading current wavelength from device {self.connected_device_name}...")
+        try:
+            wl = self.instrument.wavelength
+        except RuntimeError as e:
+            self.logger.error(f"An error occurred while reading the wavelength from this device: {e}")
             return
         self.wavelength = int(wl)
         self.sig_wavelength.emit(self.instrument.wavelength)
@@ -378,11 +385,15 @@ class interface(abstract_instrument_interface.abstract_interface):
         '''
         Read the current power range from the device, cache it in :attr:`power_range`,
         and emit :attr:`sig_power_range`.
+
+        If reading the power range fails (e.g. the device got disconnected), an
+        error is logged and the method returns without emitting.
         '''
-        self.logger.info(f"Reading current power range from device {self.connected_device_name}...") 
-        pow_range = self.instrument.power_range
-        if pow_range == None:
-            self.logger.error(f"An error occurred while reading the power range from this device.")
+        self.logger.info(f"Reading current power range from device {self.connected_device_name}...")
+        try:
+            pow_range = self.instrument.power_range
+        except RuntimeError as e:
+            self.logger.error(f"An error occurred while reading the power range from this device: {e}")
             return
         self.power_range = pow_range
         self.sig_power_range.emit(self.power_range)
