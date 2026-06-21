@@ -6,8 +6,8 @@ class ThorlabsPM100x:
     """
     Low-level driver to communicate with Thorlabs PM100A and PM100D powermeter consoles via VISA (NI-VISA backend).
  
-    The console must be set to "PM100D NI-VISA" modality (and not to "TLPM" modality) in order to be detected
-    by this driver. See the project README for details on how to switch modality.
+    The console must be set to "PM100D NI-VISA" mode (and not to "TLPM" mode) in order to be detected
+    by this driver. See the project README for details on how to switch mode.
  
     Attributes
     ----------
@@ -48,7 +48,11 @@ class ThorlabsPM100x:
         model : str, optional
             If specified, restricts this driver instance to only recognize/connect to devices of this model.
             Must be one of the model names listed in :attr:`model_identifiers` (currently ``'PM100A'`` or ``'PM100D'``).
- 
+        virtual : bool, optional
+            If ``True``, use the virtual VISA backend (``pyvisa_virtual``) instead of real hardware.
+            This allows the driver to run without any physical device or pyvisa installation, using
+            three simulated PM100x consoles. Default is ``False``.
+
         Raises
         ------
         RuntimeError
@@ -67,7 +71,7 @@ class ThorlabsPM100x:
         self.connected = False
         self.model = None       #model of the device currently connected. 
         self.model_user = model #model specified by user. This variable is only used if the user specified a specific model
-        self.being_zeroed = 0   #This flag is set to 1 while the powermeter is being zeroed, in order to temporarly stop any power reading
+        self.being_zeroed = 0   #This flag is set to 1 while the powermeter is being zeroed, in order to temporarily stop any power reading
         self._wavelength = None
         self._auto_power_range = None # boolean variable, True if the powermeter has the auto power range ON, False otherwise
         self._power_range = None
@@ -119,7 +123,7 @@ class ThorlabsPM100x:
                     idn = instrument.query('*IDN?').strip()
                     for model in self.model_identifiers: #sweep over all supported models
                         if model[1] in idn:              #check if idn is one of the supported models
-                            if self.model_user  and not(self.model_user ==model[0]): #if the user had specified a specific model, we dont consider any other model
+                            if self.model_user  and not(self.model_user ==model[0]): #if the user had specified a specific model, we don't consider any other model
                                 break
                             self.list_valid_devices.append([addr,idn,model[0]])
                     instrument.before_close()
@@ -175,10 +179,18 @@ class ThorlabsPM100x:
 
     def read_parameters_upon_connection(self):
         '''
-        Query the instrument once for all relevant parameters (power units, wavelength, wavelength range, power,
-        power range, auto power range status) and cache them in the corresponding instance attributes.
- 
-        This is called automatically by :meth:`connect_device` right after a successful connection.
+        Query the instrument once for all relevant parameters and cache them in the
+        corresponding private instance attributes.
+
+        Called automatically by :meth:`connect_device` immediately after a successful
+        connection. Each line accesses a property (or calls a method) whose getter issues
+        a VISA query and stores the result in the corresponding ``_``-prefixed attribute
+        (e.g. accessing ``self.wavelength`` caches the result in ``self._wavelength``).
+        This ensures all cached values are up to date at the moment of connection, so
+        that the rest of the program can read them without issuing additional VISA queries.
+
+        Parameters queried: power units, wavelength, wavelength range (min/max), power,
+        min/max power range, auto power range status, current power range.
         '''
         self.power_units
         self.wavelength
@@ -245,7 +257,16 @@ class ThorlabsPM100x:
     @property
     def power_units(self):
         '''
-        str: The units of the power readings returned by (``power:dc:unit?``).
+        str: The units of the power readings, as reported by the instrument (``power:dc:unit?``).
+
+        Typical values are ``'W'`` (watts) or ``'dBm'``. The result is also cached in
+        ``self._power_units``, which is used by :attr:`power` to return the units alongside
+        the power value without an extra query.
+
+        Raises
+        ------
+        RuntimeError
+            If no device is currently connected.
         '''
         if not(self.connected):
             raise RuntimeError("No powermeter is currently connected.")
@@ -516,5 +537,3 @@ class ThorlabsPM100x:
                                                     #allowed by the specific powermeter.
         if self.power_range == self.old_powerRange: #if after setting the desired power, the power range of the powermeters is unchanged, we call again this function
             self.move_to_next_power_range(direction,self.TargetPowerRange)
-
-        

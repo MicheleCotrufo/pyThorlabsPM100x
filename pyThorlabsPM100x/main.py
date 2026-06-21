@@ -23,68 +23,73 @@ graphics_dir = os.path.join(os.path.dirname(__file__), 'graphics')
 
 class interface(abstract_instrument_interface.abstract_interface):
     """
-    Create a high-level interface with the device, validate input data and perform high-level tasks such as periodically reading data from the instrument.
-    It uses signals (i.e. QtCore.pyqtSignal objects) to notify whenever relevant data has changes. These signals are typically received by the GUI
-    Several general-purpose attributes and methods are defined in the class abstract_interface defined in abstract_instrument_interface
-    ...
+    High-level model for the Thorlabs PM100x powermeter, built on top of
+    :class:`abstract_instrument_interface.abstract_interface`.
 
-    Attributes specific for this class (see the abstract class abstract_instrument_interface.abstract_interface for general attributes)
-    ----------
-    instrument
-        Instance of driver.ThorlabsPM100x
-    connected_device_name : str
-        Name of the physical device currently connected to this interface 
-    continuous_read : bool 
-        When this is set to True, the data from device are acquired continuously at the rate set by refresh_time       
-    stored_data : list
-        List used to store data acquired by this interface
-    power_units : str
-        The power units of this device
-    settings = {
-                'refresh_time': float,      The time interval (in seconds) between consecutive reeading from the device driver (default = 0.2)
-                'auto_power_range': bool    Keep track of whether the device is in auto power range modality
-                }
+    Wraps a :class:`~pyThorlabsPM100x.driver.ThorlabsPM100x` driver instance,
+    validates user input, periodically reads power from the device, and exposes
+    its state via Qt signals. Follows the model-view-controller pattern: this class
+    is the model, and :class:`gui` is the view/controller.
 
+    Class-level attributes
+    ----------------------
+    output : dict
+        Produced data. Key ``'Power'`` holds the most recently read power value (float).
+        Initialized to ``{'Power': 0}``.
 
-    Methods defined in this class (see the abstract class abstract_instrument_interface.abstract_interface for general methods)
+    Signals
     -------
-    refresh_list_devices()
-        Get a list of compatible devices from the driver. Store them in self.list_devices, send signal to populate the combobox in the GUI.
-    connect_device(device_full_name)
-        Connect to the device identified by device_full_name
-    disconnect_device()
-        Disconnect the currently connected device
-    close()
-        Closes this interface, close plot window (if any was open), and calls the close() method of the parent class, which typically calls the disconnect_device method
-   
-    set_connected_state()
-        This method also calls the set_connected_state() method defined in abstract_instrument_interface.abstract_interface
-    
-    set_refresh_time(refresh_time)
-    
-    set_wavelength(wl)
-    
-    read_wavelength()
+    sig_list_devices_updated : pyqtSignal(list)
+        Emitted when the list of available devices is refreshed. Carries the list of
+        device name strings shown in the GUI combo box.
+    sig_reading : pyqtSignal(int)
+        Emitted when the reading status changes. Parameter is one of
+        ``SIG_READING_START``, ``SIG_READING_PAUSE``, or ``SIG_READING_STOP``.
+    sig_updated_data : pyqtSignal(object)
+        Emitted each time a new power value is read. Carries ``[power, units]``.
+    sig_wavelength : pyqtSignal(int)
+        Emitted when the operating wavelength changes. Carries the new wavelength in nm.
+    sig_min_max_wavelength : pyqtSignal(int, int)
+        Emitted after reading the wavelength range from the device. Carries
+        ``(min_wavelength, max_wavelength)`` in nm.
+    sig_refreshtime : pyqtSignal(float)
+        Emitted when the refresh time setting changes. Carries the new value in seconds.
+    sig_power_range : pyqtSignal(float)
+        Emitted when the power range changes. Carries the new power range value.
+    sig_auto_power_range : pyqtSignal(bool)
+        Emitted when the auto power range status changes. Carries the new boolean status.
 
-    read_min_max_wavelength()
-    
-    change_power_range(direction)
-    
-    set_auto_power_range(status)
-    
-    read_auto_power_range()
-    
-    set_zero_powermeter()
-    
-    start_reading()
-    
-    pause_reading()
-    
-    stop_reading()
-    
-    update()
-        This method also calls the update() method defined in abstract_instrument_interface.abstract_interface
+    Status codes
+    ------------
+    SIG_READING_START : int (= 1)
+        Reading has started (continuous acquisition is active).
+    SIG_READING_PAUSE : int (= 2)
+        Reading has been paused (accumulated data are preserved).
+    SIG_READING_STOP : int (= 3)
+        Reading has been stopped and all accumulated data cleared.
 
+    Instance attributes
+    -------------------
+    instrument : ThorlabsPM100x
+        The low-level driver instance used to communicate with the device.
+    connected_device_name : str
+        VISA address of the currently connected device, or empty string if disconnected.
+    continuous_read : bool
+        When ``True``, :meth:`update` reads power continuously at the rate set by
+        ``settings['refresh_time']``.
+    stored_data : list of float
+        Power values accumulated since the last :meth:`start_reading` or
+        :meth:`stop_reading`.
+    power_units : str
+        Power units reported by the device (e.g. ``'W'``). Set upon connection.
+    wavelength : int
+        Most recently read operating wavelength, in nm.
+    power_range : float
+        Most recently read power range value.
+    min_max_wls : (int, int)
+        Cached ``(min_wavelength, max_wavelength)`` tuple, in nm.
+    settings : dict
+        ``'refresh_time'`` (float, seconds) and ``'auto_power_range'`` (bool).
     """
 
     output = {'Power':0}  #We define this also as class variable. This makes it possible to see which data is produced by this interface without having to create an object
@@ -107,6 +112,15 @@ class interface(abstract_instrument_interface.abstract_interface):
     SIG_READING_STOP = 3
 
     def __init__(self, **kwargs):
+        '''
+        Parameters
+        ----------
+        **kwargs
+            Forwarded to :class:`~abstract_instrument_interface.abstract_interface`.
+            Required key: ``app`` (``Qt.QApplication``). Optional keys include
+            ``name_logger`` (str), ``config_dict`` (dict), and ``virtual`` (bool).
+            Pass ``virtual=True`` to use the simulated driver instead of real hardware.
+        '''
         self.output = {'Power':0} 
         ### Default values of settings (might be overwritten by settings saved in .json files later)
         self.settings = {   'refresh_time': 0.2,
@@ -126,7 +140,8 @@ class interface(abstract_instrument_interface.abstract_interface):
         
     def refresh_list_devices(self):
         '''
-        Get a list of all devices connected, by using the method list_devices() of the driver. For each device obtain its identity and its address.
+        Scan for available devices using the driver, update :attr:`list_devices`, and
+        emit :attr:`sig_list_devices_updated` to refresh the GUI combo box.
         '''     
         self.logger.info(f"Looking for devices...") 
         list_valid_devices = self.instrument.list_devices() #Then we read the list of devices
@@ -135,6 +150,11 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.send_list_devices()
 
     def send_list_devices(self):
+        '''
+        Emit :attr:`sig_list_devices_updated` with the current device list formatted
+        as ``"<idn> --> <address>"`` strings, ready to populate the GUI combo box.
+        If no devices are found, an empty list is emitted.
+        '''
         if(len(self.list_devices)>0):
             list_IDNs_and_devices = [dev[1] + " --> " + dev[0] for dev in self.list_devices] 
         else:
@@ -142,6 +162,23 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.sig_list_devices_updated.emit(list_IDNs_and_devices)
 
     def connect_device(self,device_full_name):
+        '''
+        Connect to the device identified by ``device_full_name``.
+
+        Parameters
+        ----------
+        device_full_name : str
+            A string of the form ``"<idn> --> <address>"``, as produced by
+            :meth:`send_list_devices` and displayed in the GUI combo box. The VISA
+            address is extracted from the part after ``" --> "``. If empty, an error
+            is logged and the method returns immediately.
+
+        Notes
+        -----
+        On success, calls :meth:`set_connected_state`, which reads the current
+        wavelength, power range, and auto-ranging status, and starts continuous reading.
+        On failure, calls :meth:`set_disconnected_state` and logs an error.
+        '''
         if(device_full_name==''): 
             self.logger.error("No valid device has been selected.")
             return
@@ -162,6 +199,15 @@ class interface(abstract_instrument_interface.abstract_interface):
             self.set_disconnected_state()
 
     def disconnect_device(self):
+        '''
+        Disconnect the currently connected device.
+
+        Calls the driver's :meth:`~pyThorlabsPM100x.driver.ThorlabsPM100x.disconnect_device`,
+        stops continuous reading, and emits :attr:`sig_connected` with
+        :attr:`~abstract_instrument_interface.abstract_interface.SIG_DISCONNECTED`.
+        If disconnection fails (e.g. the device was already physically unplugged), the
+        disconnected state is still set so the GUI resets correctly.
+        '''
         self.logger.info(f"Disconnecting from device {self.connected_device_name}...")
         (Msg,ID) = self.instrument.disconnect_device()
         if(ID==1): # If disconnection was successful
@@ -170,12 +216,28 @@ class interface(abstract_instrument_interface.abstract_interface):
             self.set_disconnected_state()
         else: #If disconnection was not successful
             self.logger.error(f"Error: {Msg}")
-            self.set_disconnected_state() #When disconnection is not successful, it is typically because the device alredy lost connection
+            self.set_disconnected_state() #When disconnection is not successful, it is typically because the device already lost connection
                                           #for some reason. In this case, it is still useful to have all widgets reset to disconnected state      
     def close(self,**kwargs):
+        '''
+        Close this interface. Delegates entirely to the parent class
+        :meth:`~abstract_instrument_interface.abstract_interface.close`, which emits
+        :attr:`~abstract_instrument_interface.abstract_interface.sig_close`, saves
+        settings, and disconnects the device if connected.
+        '''
         super().close(**kwargs)           
 
     def set_connected_state(self):
+        '''
+        Extend the parent
+        :meth:`~abstract_instrument_interface.abstract_interface.set_connected_state`
+        to perform PM100x-specific initialization after a successful connection.
+
+        In addition to emitting :attr:`sig_connected` with ``SIG_CONNECTED``, this
+        method caches the power units, reads and emits the wavelength range and current
+        wavelength, applies the auto power range setting from :attr:`settings`, and
+        starts continuous reading via :meth:`start_reading`.
+        '''
         super().set_connected_state()
         self.power_units = self.instrument.power_units
         self.read_min_max_wavelength()
@@ -186,6 +248,22 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.start_reading()
 
     def set_refresh_time(self, refresh_time):
+        '''
+        Validate and apply a new refresh time.
+
+        Parameters
+        ----------
+        refresh_time : str or float
+            Desired refresh time in seconds. Must be convertible to ``float`` and
+            be >= 0.001 s.
+
+        Returns
+        -------
+        bool
+            ``True`` if the value was accepted (or was already set to this value),
+            ``False`` if it was invalid. On failure, :attr:`sig_refreshtime` is emitted
+            with the current (unchanged) value so the GUI can revert.
+        '''
         try: 
             refresh_time = float(refresh_time)
             if self.settings['refresh_time'] == refresh_time: #in this case the number in the refresh time edit box is the same as the refresh time currently stored
@@ -204,6 +282,27 @@ class interface(abstract_instrument_interface.abstract_interface):
         return True
 
     def set_wavelength(self, wl):
+        '''
+        Validate and set the operating wavelength of the connected device.
+
+        Parameters
+        ----------
+        wl : str, int, or float
+            Desired wavelength in nm. Must be convertible to ``int`` and within the
+            ``[min_wavelength, max_wavelength]`` range supported by the connected head.
+
+        Returns
+        -------
+        bool
+            ``True`` if the wavelength was accepted, ``False`` otherwise. On failure,
+            :attr:`sig_wavelength` is emitted with the current instrument wavelength
+            so the GUI can revert the text box.
+
+        Notes
+        -----
+        After a successful wavelength change, :meth:`read_power_range` is called
+        because the available power ranges may change with wavelength.
+        '''
         try:
             if int(self.instrument.wavelength) == int(float(wl)): #in this case the number in the refresh time edit box is the same as the wavelength currently set
                     return True
@@ -223,6 +322,13 @@ class interface(abstract_instrument_interface.abstract_interface):
         return True
   
     def read_wavelength(self):
+        '''
+        Read the current operating wavelength from the device, cache it in
+        :attr:`wavelength`, and emit :attr:`sig_wavelength`.
+
+        If the driver returns ``None`` (unexpected), an error is logged and the
+        method returns without emitting.
+        '''
         self.logger.info(f"Reading current wavelength from device {self.connected_device_name}...") 
         wl = self.instrument.wavelength
         if wl == None:
@@ -234,12 +340,31 @@ class interface(abstract_instrument_interface.abstract_interface):
         return
       
     def read_min_max_wavelength(self):
+        '''
+        Read the wavelength range supported by the connected powermeter head from
+        the driver's cached attributes and emit :attr:`sig_min_max_wavelength`.
+
+        The result is cached in :attr:`min_max_wls` as ``(min_wavelength, max_wavelength)``.
+        Note: this reads from the driver's already-cached values (set at connection by
+        :meth:`~pyThorlabsPM100x.driver.ThorlabsPM100x.read_min_max_wavelength`); it
+        does not re-query the instrument.
+        '''
         self.logger.info(f"Reading min and max wavelength supported by device {self.connected_device_name}...") 
         self.min_max_wls =  (self.instrument.min_wavelength,self.instrument.max_wavelength)
         self.sig_min_max_wavelength.emit(self.min_max_wls[0],self.min_max_wls[1])
         self.logger.info(f"Wavelength range: {self.min_max_wls[0]}-{self.min_max_wls[1]} nm") 
 
     def change_power_range(self,direction):
+        '''
+        Increase or decrease the power range by one step, then read and emit the new range.
+
+        Parameters
+        ----------
+        direction : int
+            ``+1`` to increase the power range, ``-1`` to decrease it. Forwarded
+            directly to
+            :meth:`~pyThorlabsPM100x.driver.ThorlabsPM100x.move_to_next_power_range`.
+        '''
         if direction == +1:
             string = 'increase'
         else: 
@@ -250,9 +375,13 @@ class interface(abstract_instrument_interface.abstract_interface):
         return
 
     def read_power_range(self):
+        '''
+        Read the current power range from the device, cache it in :attr:`power_range`,
+        and emit :attr:`sig_power_range`.
+        '''
         self.logger.info(f"Reading current power range from device {self.connected_device_name}...") 
         pow_range = self.instrument.power_range
-        if pow_range == None:
+        if self.pow_range == None:
             self.logger.error(f"An error occurred while reading the power range from this device.")
             return
         self.power_range = pow_range
@@ -260,13 +389,27 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.logger.info(f"Current power range is {self.power_range}.") 
 
     def set_auto_power_range(self,auto_power_range):
+        '''
+        Enable or disable the automatic power-ranging mode of the connected device.
+
+        Parameters
+        ----------
+        auto_power_range : bool
+            ``True`` to enable auto-ranging, ``False`` to disable it.
+
+        Notes
+        -----
+        On success, updates ``settings['auto_power_range']`` and emits
+        :attr:`sig_auto_power_range`. Regardless of success, :meth:`read_power_range`
+        is called afterwards to update the displayed power range value.
+        '''
         auto_power_range = bool(auto_power_range)
         status_string = 'ON' if auto_power_range else 'OFF'
         self.logger.info(f"Setting the auto-ranging function to {status_string} for the device {self.connected_device_name}...")    
         try:
             self.instrument.auto_power_range  = auto_power_range
             self.sig_auto_power_range.emit(auto_power_range)
-            self.logger.info(f"Setting changed succesfully.")
+            self.logger.info(f"Setting changed successfully.")
             self.settings['auto_power_range'] = auto_power_range
         except Exception as e:
             self.logger.error(f"An error occurred while setting the auto-ranging status: {e}")
@@ -274,6 +417,15 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.read_power_range()
 
     def read_auto_power_range(self):
+        '''
+        Read the current auto power range status from the device, update
+        ``settings['auto_power_range']``, and emit :attr:`sig_auto_power_range`.
+
+        Returns
+        -------
+        bool or None
+            The current auto power range status, or ``None`` if an error occurred.
+        '''
         self.logger.info(f"Reading the status of the auto-ranging function for the device {self.connected_device_name}...")   
         try:
             auto_power_range = self.instrument.auto_power_range
@@ -286,11 +438,19 @@ class interface(abstract_instrument_interface.abstract_interface):
             self.logger.error(f"An error occurred while reading the auto-ranging status: {e}")
 
     def set_zero_powermeter(self):
+        '''
+        Trigger the zeroing routine of the connected device via the driver's
+        :meth:`~pyThorlabsPM100x.driver.ThorlabsPM100x.set_zero`. Logs success or
+        failure. During zeroing,
+        :attr:`~pyThorlabsPM100x.driver.ThorlabsPM100x.being_zeroed` is set, which
+        causes :attr:`~pyThorlabsPM100x.driver.ThorlabsPM100x.power` to return
+        ``(None, '')`` rather than querying the instrument.
+        '''
         try: 
             ID = self.instrument.set_zero()
             self.logger.info(f"Zero-ing the device {self.connected_device_name}...")
             if ID == 1:
-                self.logger.info(f"Device was succesfully zeroed.")
+                self.logger.info(f"Device was successfully zeroed.")
             else:
                 self.logger.error(f"An error occurred while zero-ing this device.")
         except Exception as e:
@@ -298,6 +458,15 @@ class interface(abstract_instrument_interface.abstract_interface):
         return
 
     def start_reading(self):
+        '''
+        Begin continuous power acquisition from the connected device.
+
+        Sets :attr:`continuous_read` to ``True`` and emits :attr:`sig_reading` with
+        :attr:`SIG_READING_START`, then calls :meth:`update` which reschedules itself
+        via ``QTimer.singleShot`` at the interval set by ``settings['refresh_time']``
+        until :attr:`continuous_read` becomes ``False``. Has no effect if no device
+        is connected.
+        '''
         if(self.instrument.connected == False):
             self.logger.error(f"No device is connected.")
             return
@@ -305,11 +474,18 @@ class interface(abstract_instrument_interface.abstract_interface):
         self.sig_reading.emit(self.SIG_READING_START) # This signal will be caught by the GUI
         self.continuous_read = True #Until this variable is set to True, the function UpdatePower will be repeated continuously 
         self.logger.info(f"Starting reading from device {self.connected_device_name}...")
-        # Call the function self.update(), which will do stome suff (read power and store it in a global variable) and then call itself continuously until the variable self.continuous_read is set to False
+        # Call the function self.update(), which will read the power, store it in a global variable, and then call itself continuously until the variable self.continuous_read is set to False
         self.update()
         return
  
     def pause_reading(self):
+        '''
+        Pause continuous power acquisition without discarding accumulated data.
+
+        Sets :attr:`continuous_read` to ``False`` (stopping the :meth:`update` loop)
+        and emits :attr:`sig_reading` with :attr:`SIG_READING_PAUSE`. The contents
+        of :attr:`stored_data` are preserved and the plot is not cleared.
+        '''
         #Sets self.continuous_read to False (this will force the function update() to stop calling itself)
         self.continuous_read = False
         self.logger.info(f"Paused reading from device {self.connected_device_name}.")
@@ -317,6 +493,13 @@ class interface(abstract_instrument_interface.abstract_interface):
         return
 
     def stop_reading(self):
+        '''
+        Stop continuous power acquisition and clear all accumulated data.
+
+        Sets :attr:`continuous_read` to ``False``, clears :attr:`stored_data`, calls
+        :meth:`update` once more to push an empty dataset to the plot (so the plot is
+        visually cleared), then emits :attr:`sig_reading` with :attr:`SIG_READING_PAUSE`.
+        '''
         #Sets self.continuous_read to False (this will force the function update() to stop calling itself) and delete all accumulated data
         self.continuous_read = False
         self.stored_data = []
@@ -328,13 +511,23 @@ class interface(abstract_instrument_interface.abstract_interface):
         
     def update(self):
         '''
-        This routine reads continuosly the power from the powermeter and stores its value
-        If we are continuosly acquiring the power (i.e. if self.continuous_read = 1) then:
-            1) Reads the power from the powermeter and stores it in the self.output dictionary
-            2) Calls the update methods of the parent class abstract_instrument_interface.abstract_interface
-            3) Update the value of the variable self.current_power_string by generating a string containing the power and its units
-            3) Emits the self.sig_updated_data (which will be intercepted by the GUI)
-            3) Call itself after a time given by self.refresh_time
+        Read power from the device and reschedule itself.
+
+        If :attr:`continuous_read` is ``True``, this method:
+
+        1. Reads ``(power, units)`` from the instrument and stores the power value in
+           ``self.output['Power']`` and appends it to :attr:`stored_data`.
+        2. Calls ``super().update()`` (defined in
+           :class:`~abstract_instrument_interface.abstract_interface`), which fires any
+           configured trigger via :meth:`~abstract_instrument_interface.abstract_interface.send_trigger`.
+        3. Emits :attr:`sig_updated_data` with ``[power, units]`` (intercepted by the
+           GUI to update the power display and live plot).
+        4. Schedules another call to :meth:`update` after ``settings['refresh_time']``
+           seconds via ``QTimer.singleShot``.
+
+        If :attr:`continuous_read` is ``False``, the method returns immediately without
+        querying the instrument or rescheduling itself. It is still safe to call in this
+        state (e.g. :meth:`stop_reading` calls it once to trigger a final plot refresh).
         '''
         if(self.continuous_read == True):
             (currentPower,power_units) = self.instrument.power
@@ -352,13 +545,43 @@ class interface(abstract_instrument_interface.abstract_interface):
     
     
 class gui(abstract_instrument_interface.abstract_gui):
-     
+    """
+    PyQt5 view/controller for the Thorlabs PM100x interface.
+
+    Inherits from :class:`~abstract_instrument_interface.abstract_gui`. Builds the
+    instrument panel (connection row, reading controls, wavelength and power-range row)
+    and optionally a separate floating plot window. Wires widget events to
+    :class:`interface` methods and connects :class:`interface` signals to event slots
+    that update the widgets.
+
+    Instance attributes
+    -------------------
+    plot_window : Qt.QWidget or None
+        Floating widget that contains the live power plot, or ``None`` if
+        ``plot=False`` was passed to the constructor.
+    plot_object : PlotObject or None
+        The :class:`~pyThorlabsPM100x.plots.PlotObject` instance used for live
+        plotting, or ``None`` if ``plot=False``.
+    widgets_enabled_when_connected : list of Qt.QWidget
+        Widgets enabled only while a device is connected (zero button, wavelength
+        edit, power range controls, start/stop buttons).
+    widgets_enabled_when_disconnected : list of Qt.QWidget
+        Widgets enabled only while no device is connected (device combo box and
+        refresh button).
+    """
+
     def __init__(self,interface,parent,plot=False):
         """
-        Attributes specific for this class (see the abstract class abstract_instrument_interface.abstract_gui for general attributes)
+        Parameters
         ----------
-        plot, bool
-            If set true, the GUI also generates a plot object (and a button to show/hide the plot) to plot the content of the self.stored_data object
+        interface : interface
+            The :class:`interface` (model) object this GUI controls.
+        parent : Qt.QWidget
+            The Qt widget that will host this GUI panel.
+        plot : bool, optional
+            If ``True`` (default ``False``), create a floating plot window with a
+            live power-vs-acquisition-number chart and show the "Show/Hide Plot"
+            and "Stop" buttons. If ``False``, those buttons are hidden.
         """
         super().__init__(interface,parent)
         self.plot_window = None # QWidget object of the widget (i.e. floating window) that will contain the plot
@@ -369,6 +592,20 @@ class gui(abstract_instrument_interface.abstract_gui):
         self.initialize()
 
     def initialize(self):
+        '''
+        Build the full GUI: create widgets, wire events, attach to parent, and connect
+        all model signals to their event slots.
+
+        Called automatically by :meth:`__init__`. Specifically:
+
+        1. Calls :meth:`create_widgets` to instantiate and lay out all Qt widgets.
+        2. Calls :meth:`connect_widgets_events_to_functions` to wire button clicks,
+           text edits, and checkbox toggles to the corresponding handler methods.
+        3. Calls ``super().initialize()`` to set the parent widget's layout and resize it.
+        4. Connects all signals emitted by :attr:`interface` to the event slot methods
+           of this GUI.
+        5. Sets the initial widget state to "disconnected".
+        '''
         self.create_widgets()
         self.connect_widgets_events_to_functions()
 
@@ -395,7 +632,7 @@ class gui(abstract_instrument_interface.abstract_gui):
 
     def create_widgets(self):
         """
-        Creates all widgets and layout for the GUI. Any Widget and Layout must assigned to self.containter, which is a pyqt Layout object
+        Creates all widgets and layout for the GUI. Every widget and layout must be assigned to self.container, which is a PyQt5 layout object.
         """ 
         self.container = Qt.QVBoxLayout()
 
@@ -482,6 +719,10 @@ class gui(abstract_instrument_interface.abstract_gui):
         self.widgets_enabled_when_disconnected = [self.combo_Devices,self.button_RefreshDeviceList]
 
     def connect_widgets_events_to_functions(self):
+        '''
+        Wire all widget signals (button clicks, text edits, checkbox state changes) to
+        their corresponding GUI event handler methods. Called once by :meth:`initialize`.
+        '''
         self.button_RefreshDeviceList.clicked.connect(self.click_button_refresh_list_devices)
         self.button_ConnectDevice.clicked.connect(self.click_button_connect_disconnect)
         self.button_SetZeroPowermeter.clicked.connect(self.click_button_set_zero_powermeter)
@@ -501,6 +742,19 @@ class gui(abstract_instrument_interface.abstract_gui):
 ###########################################################################################################
 
     def on_connection_status_change(self,status):
+        '''
+        Event slot connected to :attr:`interface.sig_connected`.
+
+        Updates button labels, clears text boxes, and enables/disables widget groups
+        to reflect the current connection state (disconnected, connecting, connected,
+        or disconnecting).
+
+        Parameters
+        ----------
+        status : int
+            One of ``SIG_CONNECTED``, ``SIG_DISCONNECTED``, ``SIG_CONNECTING``, or
+            ``SIG_DISCONNECTING``.
+        '''
         if status == self.interface.SIG_DISCONNECTED:
             self.disable_widget(self.widgets_enabled_when_connected)
             self.enable_widget(self.widgets_enabled_when_disconnected)
@@ -527,6 +781,17 @@ class gui(abstract_instrument_interface.abstract_gui):
                 self.plot_window.setWindowTitle(f"Powermeter: {self.interface.connected_device_name}")
 
     def on_reading_status_change(self,status):
+        '''
+        Event slot connected to :attr:`interface.sig_reading`.
+
+        Updates the start/pause button icon to reflect the current reading state:
+        a "pause" icon while reading is active, a "play" icon when paused or stopped.
+
+        Parameters
+        ----------
+        status : int
+            One of ``SIG_READING_START``, ``SIG_READING_PAUSE``, or ``SIG_READING_STOP``.
+        '''
         if status == self.interface.SIG_READING_PAUSE:
             self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'play.png')))
         if status == self.interface.SIG_READING_START:
@@ -535,39 +800,132 @@ class gui(abstract_instrument_interface.abstract_gui):
             self.button_StartPauseReading.setIcon(QtGui.QIcon(os.path.join(graphics_dir,'play.png')))
 
     def on_list_devices_updated(self,list_devices):
+        '''
+        Event slot connected to :attr:`interface.sig_list_devices_updated`.
+
+        Clears and repopulates the device combo box with the new list of device strings.
+
+        Parameters
+        ----------
+        list_devices : list of str
+            Device name strings in the format ``"<idn> --> <address>"``.
+        '''
         self.combo_Devices.clear()  #First we empty the combobox  
         self.combo_Devices.addItems(list_devices) 
 
     def on_data_change(self,data):
-        #Data is (in this case) a string
+        '''
+        Event slot connected to :attr:`interface.sig_updated_data`.
+
+        Updates the power display text box and, if a plot exists, updates the live
+        plot with the full contents of :attr:`interface.stored_data`.
+
+        Parameters
+        ----------
+        data : list
+            ``[power, units]`` as emitted by :attr:`interface.sig_updated_data`.
+        '''
+        #Data is (in this case) a list [power, units]
         current_power_string = f"{data[0]:.2e}" + ' ' +  data[1]
         self.edit_Power.setText(current_power_string)
         if self.plot_object:
             self.plot_object.data.setData(list(range(1, len(self.interface.stored_data)+1)), self.interface.stored_data) #This line is executed even when self.continuous_read == False, to make sure that plot gets cleared when user press the stop button
         
     def on_refreshtime_change(self,value):
+        '''
+        Event slot connected to :attr:`interface.sig_refreshtime`.
+
+        Updates the refresh time text box to reflect the validated value stored
+        in the model.
+
+        Parameters
+        ----------
+        value : float
+            New refresh time in seconds.
+        '''
         self.edit_RefreshTime.setText(f"{value:.3f}")
 
     def on_wavelength_change(self,value):
+        '''
+        Event slot connected to :attr:`interface.sig_wavelength`.
+
+        Updates the wavelength text box to reflect the current instrument wavelength.
+
+        Parameters
+        ----------
+        value : int
+            Current operating wavelength in nm.
+        '''
         self.edit_Wavelength.setText(str(int(value)))
 
     def on_min_max_wavelength_update(self,min,max):
+        '''
+        Event slot connected to :attr:`interface.sig_min_max_wavelength`.
+
+        Updates the wavelength label to display the supported wavelength range in bold.
+
+        Parameters
+        ----------
+        min : int
+            Minimum supported wavelength in nm.
+        max : int
+            Maximum supported wavelength in nm.
+        '''
         self.label_Wavelength.setText(f"Wavelength<br>(<b>{min}-{max}</b>): ")
     
     def on_power_range_change(self,value):
+        '''
+        Event slot connected to :attr:`interface.sig_power_range`.
+
+        Updates the power range text box with the new value formatted in scientific
+        notation, and resets the cursor to position 1.
+
+        Parameters
+        ----------
+        value : float
+            New power range value (maximum measurable power in the current range).
+        '''
         self.edit_PowerRange.setText(f"{value:.2e}")
         self.edit_PowerRange.setCursorPosition(1)
 
     def on_auto_power_range_change(self,value):
+        '''
+        Event slot connected to :attr:`interface.sig_auto_power_range`.
+
+        Updates the auto-range checkbox state and enables/disables the manual power
+        range controls accordingly via :meth:`set_auto_power_range_state`.
+
+        Parameters
+        ----------
+        value : bool
+            ``True`` if auto power ranging is now enabled, ``False`` otherwise.
+        '''
         self.set_auto_power_range_state(value)
         self.box_PowerRangeAuto.setChecked(value)
 
     def on_close(self):
+        '''
+        Event slot connected to :attr:`interface.sig_close`.
+
+        Closes the floating plot window (if one exists) when the interface is closed.
+        '''
         if hasattr(self,'plot_window'):
             if self.plot_window:
                 self.plot_window.close()
 
     def set_auto_power_range_state(self,auto_power_range):
+        '''
+        Enable or disable the manual power range widgets based on the auto-ranging state.
+
+        When ``auto_power_range`` is ``True``, the power range text box and the
+        increase/decrease buttons are disabled (since the instrument controls the range
+        automatically). When ``False``, they are re-enabled.
+
+        Parameters
+        ----------
+        auto_power_range : bool
+            ``True`` if auto power ranging is active, ``False`` otherwise.
+        '''
         if auto_power_range:
             self.disable_widget([self.edit_PowerRange,self.button_IncreasePowerRange, self.button_DecreasePowerRange])
         else:
@@ -583,9 +941,17 @@ class gui(abstract_instrument_interface.abstract_gui):
 ###################################################################################################################################################
 
     def click_button_refresh_list_devices(self):
+        '''Refresh the device list by calling :meth:`interface.refresh_list_devices`.'''
         self.interface.refresh_list_devices()
 
     def click_button_connect_disconnect(self):
+        '''
+        Toggle the connection state of the instrument.
+
+        If the instrument is currently disconnected, reads the selected device name
+        from the combo box and calls :meth:`interface.connect_device`. If currently
+        connected, calls :meth:`interface.disconnect_device`.
+        '''
         if(self.interface.instrument.connected == False): # We attempt connection   
             device_full_name = self.combo_Devices.currentText() # Get the device name from the combobox
             self.interface.connect_device(device_full_name)
@@ -593,6 +959,17 @@ class gui(abstract_instrument_interface.abstract_gui):
             self.interface.disconnect_device()
 
     def click_box_PowerRangeAuto(self, state):
+        '''
+        Handler for the "Auto" power range checkbox state change.
+
+        Converts the Qt check state to a boolean and calls
+        :meth:`interface.set_auto_power_range`.
+
+        Parameters
+        ----------
+        state : Qt.CheckState
+            The new state of the checkbox (``Qt.Checked`` or ``Qt.Unchecked``).
+        '''
         if state == QtCore.Qt.Checked:
             status_bool = True
         else:
@@ -600,19 +977,45 @@ class gui(abstract_instrument_interface.abstract_gui):
         self.interface.set_auto_power_range(status_bool)
 
     def click_button_set_zero_powermeter(self):
+        '''Handler for the "Set Zero" button. Calls :meth:`interface.set_zero_powermeter`.'''
         self.interface.set_zero_powermeter()
 
     def press_enter_wavelength(self):
+        '''
+        Handler for the wavelength text box (Return pressed).
+
+        Reads the current text and calls :meth:`interface.set_wavelength`.
+
+        Returns
+        -------
+        bool
+            ``True`` if the wavelength was accepted, ``False`` otherwise.
+        '''
         return self.interface.set_wavelength(self.edit_Wavelength.text())
         
     def click_button_change_power_range(self,direction):
+        '''
+        Handler for the "<" and ">" power range buttons.
+
+        Parameters
+        ----------
+        direction : int
+            ``-1`` to decrease the power range, ``+1`` to increase it.
+        '''
         self.interface.change_power_range(direction)
        
     def click_button_StartPauseReading(self): 
+        '''
+        Handler for the start/pause reading button.
+
+        If reading is not active, validates the refresh time and wavelength text
+        boxes first, then calls :meth:`interface.start_reading`. If reading is
+        already active, calls :meth:`interface.pause_reading`.
+        '''
         if(self.interface.continuous_read == False):
             if not(self.press_enter_refresh_time()): #read the current value in the refresh_time textbox, and validates it. The function returns True/False if refresh_time was valid
                 return
-            if not(self.press_enter_wavelength()): #read the current value in the wavelength textbox, and validates it. The function returns True/False if refresh_time was valid
+            if not(self.press_enter_wavelength()): #read the current value in the wavelength textbox, and validates it. The function returns True/False if wavelength was valid
                 return
             self.interface.start_reading()
         elif (self.interface.continuous_read == True):
@@ -620,12 +1023,24 @@ class gui(abstract_instrument_interface.abstract_gui):
         return
 
     def click_button_StopReading(self):
+        '''Handler for the stop reading button. Calls :meth:`interface.stop_reading`.'''
         self.interface.stop_reading()
 
     def press_enter_refresh_time(self):
+        '''
+        Handler for the refresh time text box (Return pressed).
+
+        Reads the current text and calls :meth:`interface.set_refresh_time`.
+
+        Returns
+        -------
+        bool
+            ``True`` if the refresh time was accepted, ``False`` otherwise.
+        '''
         return self.interface.set_refresh_time(self.edit_RefreshTime.text())
 
     def click_button_ShowHidePlot(self):
+        '''Handler for the "Show/Hide Plot" button. Toggles the visibility of the plot window.'''
         self.plot_window.setHidden(not self.plot_window.isHidden())
 
 #################################
@@ -634,7 +1049,12 @@ class gui(abstract_instrument_interface.abstract_gui):
 
     def create_plot(self):
         '''
-        This function creates an additional (separated) window with a pyqtgraph object, which plots the contents of self.stored_data
+        Create a separate floating window containing a live pyqtgraph plot of
+        :attr:`interface.stored_data` (power vs. acquisition number).
+
+        The window is created hidden; call ``plot_window.setHidden(False)`` or use
+        :meth:`click_button_ShowHidePlot` to show it. The plot axis label and window
+        title are updated after connection via :meth:`on_connection_status_change`.
         '''
         self.plot_window = Qt.QWidget() #This is the widget that will contain the plot. Since it does not have a parent, the plot will be in a floating (separated) window
         self.plot_object = PlotObject(self.interface.app, self.plot_window)
@@ -648,6 +1068,14 @@ class gui(abstract_instrument_interface.abstract_gui):
 #################################################################################################
 
 class MainWindow(Qt.QWidget):
+    '''
+    Top-level window used when running pyThorlabsPM100x as a standalone application.
+
+    A plain ``QWidget`` whose title is set to the package name. The :class:`gui`
+    panel is embedded inside it as a child widget. The window's ``closeEvent``
+    triggers ``app.aboutToQuit``, which in turn calls :meth:`interface.close` to
+    save settings and disconnect the device cleanly.
+    '''
     def __init__(self):
         super().__init__()
         self.setWindowTitle(__package__)
@@ -659,6 +1087,20 @@ class MainWindow(Qt.QWidget):
 #################################################################################################
 
 def main():
+    '''
+    Entry point for the standalone pyThorlabsPM100x application.
+
+    Parses command-line arguments, creates the Qt application, instantiates the
+    :class:`interface` (model) and :class:`gui` (view/controller), shows the main
+    window, and starts the Qt event loop.
+
+    Command-line arguments
+    ----------------------
+    ``-s`` / ``--decrease_verbose``
+        Suppress informational log output (sets ``Interface.verbose = False``).
+    ``-virtual``
+        Use the virtual driver (simulated devices) instead of real hardware.
+    '''
     parser = argparse.ArgumentParser(description = "",epilog = "")
     parser.add_argument("-s", "--decrease_verbose", help="Decrease verbosity.", action="store_true")
     parser.add_argument('-virtual', help=f"Initialize the virtual driver", action="store_true")
