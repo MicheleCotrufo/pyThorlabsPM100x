@@ -60,7 +60,6 @@ class ThorlabsPM100x:
                    raise RuntimeError("The specified model is not supported. Supported models are " + ", ".join(models_supported))
         if virtual:
             import pyThorlabsPM100x.pyvisa_virtual as _visa
-            print(1)
         else:
             import pyvisa as _visa
         self._VisaIOError = _visa.VisaIOError
@@ -78,7 +77,7 @@ class ThorlabsPM100x:
         self._max_power_range = None
 
         #The properties min_wavelength and max_wavelength are defined as 'standard' variables and not
-        # via the the @property, because they never change once we are connected to a given powermeter, 
+        # via the @property, because they never change once we are connected to a given powermeter, 
         # so we can query the powermeter only once (at connection) and avoid additional queries later.
         self.min_wavelength = None 
         self.max_wavelength = None
@@ -161,7 +160,7 @@ class ThorlabsPM100x:
                 self.instrument = self.rm.open_resource(device_addr)
                 Msg = self.instrument.query('*IDN?')
                 for model in self.model_identifiers:
-                    if model[0] in Msg:
+                    if model[1] in Msg:
                         self.model = model[0]
                 ID = 1
             except visa.VisaIOError:
@@ -211,7 +210,7 @@ class ThorlabsPM100x:
                 self.instrument.control_ren(False)  # Disable remote mode
                 self.instrument.close()
                 ID = 1
-                Msg = 'Succesfully disconnected.'
+                Msg = 'Successfully disconnected.'
             except Exception as e:
                 ID = 0 
                 Msg = e
@@ -454,13 +453,14 @@ class ThorlabsPM100x:
         '''
         ID = 0
         if(self.connected):
+            self.being_zeroed = 1
             try:
-                self.being_zeroed = 1
                 self.instrument.write('sense:correction:collect:zero')
                 self.being_zeroed = 0
                 ID = 1
             except visa.VisaIOError:
                 ID = 0
+                self.being_zeroed = 0
                 pass
         return ID
 
@@ -502,7 +502,7 @@ class ThorlabsPM100x:
             raise ValueError("The input variable 'direction' must be either +1 (to increase power range) or -1 (to decrease it).") 
 
         Factor = 10*0.9
-        if not(LastPowerRange):
+        if LastPowerRange is None:
             LastPowerRange = self._power_range
         self.old_powerRange = self._power_range
         self.TargetPowerRange = (LastPowerRange * Factor) if (direction==+1) else (LastPowerRange / Factor)
@@ -512,7 +512,7 @@ class ThorlabsPM100x:
         if self.TargetPowerRange > self._max_power_range:
             return
 
-        self.power_range = self.TargetPowerRange    #Try updating the power range to the new value. The value stored in self.power_range (when retrie it) will actually be one of the valid power ranges
+        self.power_range = self.TargetPowerRange    #Try updating the power range to the new value. The value stored in self.power_range (when retrieving it) will actually be one of the valid power ranges
                                                     #allowed by the specific powermeter.
         if self.power_range == self.old_powerRange: #if after setting the desired power, the power range of the powermeters is unchanged, we call again this function
             self.move_to_next_power_range(direction,self.TargetPowerRange)
