@@ -55,7 +55,7 @@ The method `list_devices()` returns a list, with each element representing one a
 the physical address of the device. The line `powermeter.connect_device(device_addr = available_devices[0][0])` establishes a connection to the first device found.
 We then print the power currently read by the console, and finally disconnect from it.
 
-The class `ThorlabsPM100x` supports several properties and methods to communicate with the console and to read/change its settings. Some of the properties are read-only, while others can be set. A full list of properties, attributes, and methods is available here below. **Note**: the documentation below was partially compiled with the help of Claude - mistakes are possible.
+The class `ThorlabsPM100x` supports several properties and methods to communicate with the console and to read/change its settings. Some of the properties are read-only, while others can be set. A full list of properties, attributes, and methods is available below. **Note**: the documentation below was partially compiled with the help of Claude - mistakes are possible.
 
 ### Creating a driver instance
 
@@ -70,7 +70,7 @@ ThorlabsPM100x(model=None, virtual=False)
 
 ### Virtual mode (no hardware needed)
 
-Passing `virtual=True` makes the driver simulate three PM100x consoles (one PM100A and two PM100D, with different wavelength ranges) instead of talking to real hardware over `pyvisa`. This is useful for testing or demoing the package without a physical instrument, and works even if `pyvisa`/NI-VISA is not installed.
+Passing `virtual=True` makes the driver simulate three virtual PM100x consoles (one PM100A and two PM100D, with different wavelength ranges) instead of talking to real hardware over `pyvisa`. This is useful for testing or demoing the package without a physical instrument, and works even if `pyvisa`/NI-VISA is not installed.
 
 ```python
 from pyThorlabsPM100x.driver import ThorlabsPM100x
