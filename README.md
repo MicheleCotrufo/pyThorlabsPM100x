@@ -33,6 +33,7 @@ pip install "PyQt5>=5.15.6"
 pip install "pyqtgraph>=0.12.4"
 pip install numpy
 ```
+Additionally, the [NI-VISA](https://www.ni.com/en/support/downloads/drivers/download.ni-visa.html) library must be installed.
 
 **Important:** in order to be accessible from this library, the console needs to be set to "PM100D NI-VISA" modality, and not to
 "TLPM modality". Typically, if you used recent Thorlabs software to acquire from a console, that will automatically set the console to "TLPM modality".
